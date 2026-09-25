@@ -1,6 +1,6 @@
 import logging
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock
+from .models import Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock, Restaurante, PlatoPrecioCanal
 from django.http import JsonResponse, Http404
 from django.contrib import messages
 from django.utils import timezone
@@ -16,12 +16,25 @@ from datetime import datetime, timedelta
 from django.db.models.functions import TruncDay
 from collections import Counter
 from Menu.services.inventory_service import descontar_stock_orden
+from Menu.services.delivery_service import procesar_orden_delivery_externa
 
 from django.contrib.auth import authenticate, login, logout
 from functools import wraps
 from django.db.models.functions import ExtractHour
 
 logger = logging.getLogger(__name__)
+
+
+def get_current_restaurante(request) -> Restaurante:
+    """Obtiene el restaurante activo para la sesión o el inquilino base 'Mainch'."""
+    restaurante = Restaurante.objects.filter(slug="mainch").first()
+    if not restaurante:
+        restaurante, _ = Restaurante.objects.get_or_create(
+            slug="mainch",
+            defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile"}
+        )
+    return restaurante
+
 
 
 def admin_required(view_func):
@@ -96,11 +109,15 @@ def logout_view(request):
 
 # ---------------------------------   INICIO  -----------------------------------------------
 def inicio(request):
-    pedidos_en_curso = (
-        Orden.objects.filter(estado=Orden.ESTADO_EN_CURSO)
+    restaurante = get_current_restaurante(request)
+    pedidos_qs = (
+        Orden.objects.filter(restaurante=restaurante, estado=Orden.ESTADO_EN_CURSO)
         .prefetch_related('items__plato', 'items__menu__platos')
         .order_by('fecha', 'hora', 'id')
     )
+
+    pedidos_local = [p for p in pedidos_qs if not p.es_delivery]
+    pedidos_delivery = [p for p in pedidos_qs if p.es_delivery]
 
     is_htmx = (
         request.headers.get("HX-Request") == "true"
@@ -109,11 +126,14 @@ def inicio(request):
 
     if is_htmx:
         return render(request, "Menu/partials/kds_board.html", {
-            "pedidos_en_curso": pedidos_en_curso,
+            "pedidos_en_curso": pedidos_qs,
+            "pedidos_local": pedidos_local,
+            "pedidos_delivery": pedidos_delivery,
+            "restaurante": restaurante,
         })
 
     # Filtros para el historial
-    historial = Orden.objects.filter(estado__in=[Orden.ESTADO_COMPLETADA, Orden.ESTADO_ELIMINADA])
+    historial = Orden.objects.filter(restaurante=restaurante, estado__in=[Orden.ESTADO_COMPLETADA, Orden.ESTADO_ELIMINADA])
 
     # Obtener parámetros de filtro
     filtro_estado = request.GET.get("estado")
@@ -140,11 +160,14 @@ def inicio(request):
     canales = Orden.CANAL_CHOICES
 
     return render(request, "Menu/inicio.html", {
-        "pedidos_en_curso": pedidos_en_curso,
+        "pedidos_en_curso": pedidos_qs,
+        "pedidos_local": pedidos_local,
+        "pedidos_delivery": pedidos_delivery,
         "historial_reciente": historial,
         "tipos_pago": tipos_pago,
         "estados": estados,
         "canales": canales,
+        "restaurante": restaurante,
     })
 
 # Confirmar orden
@@ -338,8 +361,18 @@ def crear_orden(request):
             return redirect("Menu:crear_orden")
 
         cliente = data.get("cliente")
-        canal_venta = str(data.get("canal_venta") or "Local").strip() or "Local"
+        canal_venta = str(data.get("canal_venta") or data.get("canal") or "Local").strip() or "Local"
         tipo_pago = str(data.get("tipo_pago") or "Efectivo").strip() or "Efectivo"
+
+        # Restricción RBAC: Canales de delivery exclusivos para Administrador
+        canales_delivery = [Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY]
+        es_admin = request.user.is_authenticated and request.user.is_staff
+        if canal_venta in canales_delivery and not es_admin:
+            msg = "El registro manual de pedidos por Delivery (Uber Eats, Pedidos Ya) está restringido a administradores."
+            if is_json or is_ajax:
+                return JsonResponse({"success": False, "message": msg}, status=403)
+            messages.error(request, msg)
+            return redirect("Menu:crear_orden")
 
         # 2. Validar que cliente sea obligatorio y no vacío
         if not cliente or not str(cliente).strip():
@@ -404,7 +437,6 @@ def crear_orden(request):
                     messages.error(request, msg)
                     return redirect("Menu:crear_orden")
 
-                # Enforce cantidad > 0 (rechaza cantidad <= 0 con HTTP 400)
                 if cantidad <= 0:
                     msg = "La cantidad debe ser mayor a cero."
                     if is_json or is_ajax:
@@ -422,7 +454,6 @@ def crear_orden(request):
                     else:
                         tipo = "plato"
 
-                # Enforce non-empty numeric ID
                 if raw_id is None or str(raw_id).strip() == "":
                     msg = "ID de ítem obligatorio."
                     if is_json or is_ajax:
@@ -522,7 +553,6 @@ def crear_orden(request):
             except Exception as e:
                 logger.warning(f"Error parseando menus legacy: {e}")
 
-        # 5. Validar que la orden contenga al menos un ítem (rechaza orden vacía con HTTP 400)
         if not items_to_create:
             msg = "La orden debe contener al menos un ítem."
             if is_json or is_ajax:
@@ -530,10 +560,12 @@ def crear_orden(request):
             messages.error(request, msg)
             return redirect("Menu:crear_orden")
 
-        # 6. Creación atómica de la orden
+        # 6. Creación atómica de la orden con Price Tiers y restaurante
         try:
+            restaurante = get_current_restaurante(request)
             with transaction.atomic():
                 nueva_orden = Orden(
+                    restaurante=restaurante,
                     cliente=cliente,
                     canal_venta=canal_venta,
                     tipo_pago=tipo_pago,
@@ -544,9 +576,20 @@ def crear_orden(request):
 
                 for item_type, obj, cant in items_to_create:
                     if item_type == "plato":
-                        OrdenItem.objects.create(orden=nueva_orden, plato=obj, cantidad=cant)
+                        precio_canal = obj.get_precio_para_canal(canal_venta)
+                        OrdenItem.objects.create(
+                            orden=nueva_orden,
+                            plato=obj,
+                            cantidad=cant,
+                            precio_unitario=precio_canal
+                        )
                     elif item_type == "menu":
-                        OrdenItem.objects.create(orden=nueva_orden, menu=obj, cantidad=cant)
+                        OrdenItem.objects.create(
+                            orden=nueva_orden,
+                            menu=obj,
+                            cantidad=cant,
+                            precio_unitario=obj.precio_menus
+                        )
 
                 nueva_orden.monto_total = nueva_orden.calcular_total()
                 nueva_orden.save(update_fields=["monto_total"])
@@ -575,19 +618,27 @@ def crear_orden(request):
             return redirect("Menu:crear_orden")
 
     # Manejo de solicitudes GET
-    platos = Plato.objects.all().order_by('nombre')
-    menus = Menu.objects.all().order_by('nombre')
+    restaurante = get_current_restaurante(request)
+    platos = Plato.objects.filter(restaurante=restaurante).order_by('nombre')
+    menus = Menu.objects.filter(restaurante=restaurante).order_by('nombre')
     
     platos_por_letra = {letra: list(grupo) for letra, grupo in groupby(platos, key=lambda x: x.nombre[0].upper())}
     menus_por_letra = {letra: list(grupo) for letra, grupo in groupby(menus, key=lambda x: x.nombre[0].upper())}
     
-    canales_ventas = Orden.CANAL_CHOICES
+    es_admin = request.user.is_authenticated and request.user.is_staff
+    # El usuario de caja NO puede registrar pedidos por delivery
+    if es_admin:
+        canales_ventas = Orden.CANAL_CHOICES
+    else:
+        canales_ventas = [c for c in Orden.CANAL_CHOICES if c[0] in [Orden.CANAL_LOCAL, Orden.CANAL_WHATSAPP]]
+
     tipos_pago = Orden.PAGO_CHOICES
     return render(request, "Menu/crear_orden.html", {
         "platos_por_letra": platos_por_letra,
         "menus_por_letra": menus_por_letra,
         "canales_ventas": canales_ventas,
         "tipos_pago": tipos_pago,
+        "es_admin": es_admin,
     })
 
 # -------------------- GESTIÓN DE RECETAS / ESCANDALLO (DUEÑO) --------------------
@@ -687,11 +738,126 @@ def eliminar_ingrediente_receta(request, item_id):
     item.delete()
     return JsonResponse({
         "success": True,
-        "message": f"Ingrediente '{insumo_nombre}' eliminado de la receta."
+        "message": f"Insumo '{insumo_nombre}' eliminado de la receta."
+    })
+# -------------------- PRICE TIERS Y SKU MAPPING (DUEÑO / DELIVERY) --------------------
+
+@admin_required
+def obtener_price_tiers_plato(request, plato_id):
+    """Devuelve los precios configurados y SKUs externos por canal para un plato."""
+    plato = get_object_or_404(Plato, id=plato_id)
+    tiers = PlatoPrecioCanal.objects.filter(plato=plato)
+    
+    canales_dict = {tier.canal: tier for tier in tiers}
+    resultado = []
+    
+    for canal_code, canal_name in PlatoPrecioCanal.CANAL_CHOICES:
+        tier = canales_dict.get(canal_code)
+        resultado.append({
+            "canal": canal_code,
+            "canal_nombre": canal_name,
+            "precio": float(tier.precio) if tier else float(plato.valor),
+            "sku_externo": tier.sku_externo if tier else f"SKU-{plato.id}-{canal_code.upper()}",
+            "disponible": tier.disponible if tier else True
+        })
+
+    return JsonResponse({
+        "success": True,
+        "plato": {
+            "id": plato.id,
+            "nombre": plato.nombre,
+            "precio_base": float(plato.valor)
+        },
+        "tiers": resultado
     })
 
 
-# -------------------- EDICION CRUD ----------------------------
+@admin_required
+def guardar_price_tier_plato(request, plato_id):
+    """Guarda o actualiza el precio y SKU externo de un plato para un canal específico."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
+
+    try:
+        data = json.loads(request.body) if request.body and request.content_type == "application/json" else request.POST
+        plato = get_object_or_404(Plato, id=plato_id)
+        canal = data.get("canal")
+        precio_raw = data.get("precio")
+        sku_externo = (data.get("sku_externo") or "").strip()
+        disponible = data.get("disponible", True)
+
+        if not canal or precio_raw is None:
+            return JsonResponse({"success": False, "message": "Canal y precio son obligatorios."}, status=400)
+
+        precio = float(precio_raw)
+        if precio <= 0:
+            return JsonResponse({"success": False, "message": "El precio debe ser mayor a 0."}, status=400)
+
+        tier, created = PlatoPrecioCanal.objects.update_or_create(
+            plato=plato,
+            canal=canal,
+            defaults={
+                "precio": precio,
+                "sku_externo": sku_externo,
+                "disponible": bool(disponible)
+            }
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": f"Price tier para {canal} guardado exitosamente."
+        })
+    except Exception as e:
+        logger.exception("Error guardando price tier: %s", e)
+        return JsonResponse({"success": False, "message": f"Error: {str(e)}"}, status=500)
+
+
+# -------------------- API WEBHOOKS DELIVERY (UBER EATS / PEDIDOS YA) --------------------
+
+def delivery_webhook_api(request, plataforma):
+    """
+    Endpoint HTTP POST para recibir órdenes de plataformas de delivery (Uber Eats & Pedidos Ya):
+    - Rutas: /api/delivery/webhook/ubereats/ y /api/delivery/webhook/pedidosya/
+    - Métodos: POST
+    - Aplica SKU Mapping y Price Tiers
+    - Inyecta la comanda en vivo a Cocina KDS.
+    """
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"success": False, "message": "JSON malformado."}, status=400)
+
+    # Identificar restaurante por API Key (en header o param) o por defecto Mainch
+    api_key = request.headers.get("X-Delivery-API-Key") or request.GET.get("api_key")
+    restaurante = None
+    if api_key:
+        restaurante = Restaurante.objects.filter(api_key_delivery=api_key, activo=True).first()
+
+    if not restaurante:
+        restaurante = get_current_restaurante(request)
+
+    exito, orden, mensaje, repetido = procesar_orden_delivery_externa(
+        restaurante=restaurante,
+        canal=plataforma,
+        payload=payload
+    )
+
+    if not exito:
+        return JsonResponse({"success": False, "message": mensaje}, status=400)
+
+    status_code = 200 if repetido else 201
+    return JsonResponse({
+        "success": True,
+        "repetido": repetido,
+        "message": mensaje,
+        "orden_id": orden.id if orden else None,
+        "monto_total": orden.monto_total if orden else 0.0,
+        "order_id_externo": orden.order_id_externo if orden else None
+    }, status=status_code)
+
 
 @admin_required
 def crud(request):
@@ -919,8 +1085,40 @@ def data_analisis(request):
             .annotate(cantidad=Count("id"), total=Sum("monto_total"))
             .order_by("-cantidad")
         )
-        canales_venta_labels = [dato['canal_venta'] or 'Local' for dato in canales_venta]
-        canales_venta_data = [dato['cantidad'] for dato in canales_venta]
+        canales_venta_labels = [c['canal_venta'] or 'Local' for c in canales_venta]
+        canales_venta_data = [c['cantidad'] for c in canales_venta]
+
+        # 7. Métricas Exclusivas de Evolución de Delivery
+        canales_delivery_list = [Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY]
+        ordenes_delivery = ordenes_completadas.filter(canal_venta__in=canales_delivery_list)
+        ordenes_local = ordenes_completadas.exclude(canal_venta__in=canales_delivery_list)
+
+        total_delivery_facturado = float(ordenes_delivery.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
+        total_delivery_pedidos = ordenes_delivery.count()
+        ticket_promedio_delivery = (total_delivery_facturado / total_delivery_pedidos) if total_delivery_pedidos > 0 else 0.0
+
+        total_local_facturado = float(ordenes_local.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
+        total_local_pedidos = ordenes_local.count()
+        ticket_promedio_local = (total_local_facturado / total_local_pedidos) if total_local_pedidos > 0 else 0.0
+
+        # Participación de Apps: Uber Eats vs Pedidos Ya vs Delivery Propio
+        pedidos_ubereats = ordenes_completadas.filter(canal_venta=Orden.CANAL_UBER_EATS)
+        total_ubereats = float(pedidos_ubereats.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
+        count_ubereats = pedidos_ubereats.count()
+
+        pedidos_peya = ordenes_completadas.filter(canal_venta=Orden.CANAL_PEDIDOS_YA)
+        total_peya = float(pedidos_peya.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
+        count_peya = pedidos_peya.count()
+
+        # Tendencia temporal de delivery por día
+        ventas_delivery_tiempo = (
+            ordenes_delivery.annotate(fecha_dia=TruncDay('fecha'))
+            .values("fecha_dia")
+            .annotate(total_ingresos=Sum("monto_total"), pedidos=Count("id"))
+            .order_by("fecha_dia")
+        )
+        delivery_tiempo_labels = [d['fecha_dia'].strftime('%Y-%m-%d') if hasattr(d['fecha_dia'], 'strftime') else str(d['fecha_dia']) for d in ventas_delivery_tiempo]
+        delivery_tiempo_data = [float(d['total_ingresos'] or 0.0) for d in ventas_delivery_tiempo]
 
     except Exception as e:
         logger.exception("Error procesando datos para data_analisis: %s", e)
@@ -945,8 +1143,21 @@ def data_analisis(request):
         canales_venta_labels = []
         canales_venta_data = []
 
+        total_delivery_facturado = 0.0
+        total_delivery_pedidos = 0
+        ticket_promedio_delivery = 0.0
+        total_local_facturado = 0.0
+        total_local_pedidos = 0
+        ticket_promedio_local = 0.0
+        total_ubereats = 0.0
+        count_ubereats = 0
+        total_peya = 0.0
+        count_peya = 0
+        delivery_tiempo_labels = []
+        delivery_tiempo_data = []
+
     context = {
-        # KPIs Numéricos
+        # KPIs Numéricos Generales
         "total_facturado": total_facturado,
         "total_ordenes_completadas": total_ordenes_completadas,
         "total_ordenes_todas": total_ordenes_todas,
@@ -955,6 +1166,20 @@ def data_analisis(request):
         "total_descuentos": total_descuentos,
         "plato_estrella": plato_estrella,
         "hora_pico": hora_pico,
+
+        # KPIs y Métricas Exclusivas de Delivery
+        "total_delivery_facturado": total_delivery_facturado,
+        "total_delivery_pedidos": total_delivery_pedidos,
+        "ticket_promedio_delivery": round(ticket_promedio_delivery, 2),
+        "total_local_facturado": total_local_facturado,
+        "total_local_pedidos": total_local_pedidos,
+        "ticket_promedio_local": round(ticket_promedio_local, 2),
+        "total_ubereats": total_ubereats,
+        "count_ubereats": count_ubereats,
+        "total_peya": total_peya,
+        "count_peya": count_peya,
+        "delivery_tiempo_labels": json.dumps(delivery_tiempo_labels),
+        "delivery_tiempo_data": json.dumps(delivery_tiempo_data),
 
         # Gráficos JSON
         "ventas_tiempo_labels": json.dumps(ventas_tiempo_labels),

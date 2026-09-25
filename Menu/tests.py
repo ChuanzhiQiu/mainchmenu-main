@@ -3,7 +3,8 @@ from decimal import Decimal
 from django.test import TestCase, Client
 from django.urls import reverse
 from unittest.mock import patch
-from Menu.models import Plato, Menu, Orden, OrdenItem, Insumo, RecetaItem, MovimientoStock
+from django.contrib.auth.models import User
+from Menu.models import Plato, Menu, Orden, OrdenItem, Insumo, RecetaItem, MovimientoStock, Restaurante, PlatoPrecioCanal
 from Menu.utils import (
     imprimir_comanda,
     format_ticket_text,
@@ -673,5 +674,204 @@ class AdminRoleAndRecipeAnalyticsTests(TestCase):
         self.assertEqual(resp.context["total_facturado"], 18000.0)
         self.assertEqual(resp.context["total_ordenes_completadas"], 2)
         self.assertEqual(resp.context["ticket_promedio"], 9000.0)
+
+
+class MultiTenancyAndDeliveryIntegrationTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        # Inquilino base Mainch
+        self.restaurante_mainch, _ = Restaurante.objects.get_or_create(
+            slug="mainch",
+            defaults={"nombre": "Mainch", "direccion": "Valparaíso"}
+        )
+        self.admin_user, _ = User.objects.get_or_create(
+            username="Mainch",
+            defaults={"is_staff": True, "is_superuser": True}
+        )
+        self.admin_user.set_password("Mainch1valpo")
+        self.admin_user.save()
+
+        # Plato con precio salón $5.000
+        self.plato = Plato.objects.create(
+            restaurante=self.restaurante_mainch,
+            nombre="Sushi Roll Acevichado",
+            valor=5000.0
+        )
+        # Price Tiers diferenciados por canal
+        self.tier_ubereats = PlatoPrecioCanal.objects.create(
+            plato=self.plato,
+            canal=Orden.CANAL_UBER_EATS,
+            sku_externo="UBER-SUSHI-ACEV",
+            precio=6500.0
+        )
+        self.tier_pedidosya = PlatoPrecioCanal.objects.create(
+            plato=self.plato,
+            canal=Orden.CANAL_PEDIDOS_YA,
+            sku_externo="PEYA-SUSHI-ACEV",
+            precio=6200.0
+        )
+
+    def test_price_tier_resolution(self):
+        """Verifica que el plato entregue su precio diferenciado por canal."""
+        self.assertEqual(self.plato.get_precio_para_canal("Local"), 5000.0)
+        self.assertEqual(self.plato.get_precio_para_canal("UberEats"), 6500.0)
+        self.assertEqual(self.plato.get_precio_para_canal("PedidosYa"), 6200.0)
+        # Canal no configurado recurre al precio base de la carta
+        self.assertEqual(self.plato.get_precio_para_canal("Whatsapp"), 5000.0)
+
+    def test_delivery_webhook_ubereats_successful_ingestion(self):
+        """Verifica que el webhook de Uber Eats procese la orden con su precio diferenciado y SKU externo."""
+        payload = {
+            "order_id": "UBER-ORD-9988",
+            "cliente": "Camila Silva",
+            "detalles_entrega": {
+                "direccion": "Calle Prat 123, Depto 402",
+                "telefono": "+56 9 8888 7777",
+                "repartidor": "Rodrigo (Moto)"
+            },
+            "items": [
+                {
+                    "sku": "UBER-SUSHI-ACEV",
+                    "cantidad": 2,
+                    "notas": "Sin jengibre"
+                }
+            ]
+        }
+        resp = self.client.post(
+            "/api/delivery/webhook/ubereats/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            HTTP_X_DELIVERY_API_KEY=self.restaurante_mainch.api_key_delivery
+        )
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+        self.assertTrue(data["success"])
+        orden_id = data["orden_id"]
+
+        orden = Orden.objects.get(id=orden_id)
+        self.assertEqual(orden.canal_venta, "UberEats")
+        self.assertEqual(orden.order_id_externo, "UBER-ORD-9988")
+        self.assertEqual(orden.cliente, "Camila Silva (UberEats)")
+        self.assertTrue(orden.es_delivery)
+        # Subtotal: 2 * 6500 = 13000
+        self.assertEqual(orden.monto_total, 13000.0)
+        self.assertEqual(orden.items.count(), 1)
+        item = orden.items.first()
+        self.assertEqual(item.precio_unitario, 6500.0)
+        self.assertEqual(item.subtotal, 13000.0)
+
+    def test_delivery_webhook_idempotency(self):
+        """Verifica que reenviar el mismo order_id externo no duplique la orden."""
+        payload = {
+            "order_id": "UBER-DUP-1122",
+            "cliente": "Pedro Dup",
+            "items": [{"sku": "UBER-SUSHI-ACEV", "cantidad": 1}]
+        }
+        resp1 = self.client.post(
+            "/api/delivery/webhook/ubereats/",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+        self.assertEqual(resp1.status_code, 201)
+
+        # Segundo envío idéntico
+        resp2 = self.client.post(
+            "/api/delivery/webhook/ubereats/",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+        self.assertEqual(resp2.status_code, 200)
+        self.assertTrue(resp2.json()["repetido"])
+        self.assertEqual(Orden.objects.filter(order_id_externo="UBER-DUP-1122").count(), 1)
+
+    def test_pos_channel_restriction_cashier_blocked_from_delivery(self):
+        """Verifica que un cajero no autenticado o no-admin reciba 403 al crear orden por canal Delivery."""
+        # Intento de cajero de crear orden manual por UberEats
+        resp = self.client.post(
+            "/pedidos/crear/",
+            data=json.dumps({
+                "cliente": "Intento Cajero",
+                "canal": "UberEats",
+                "tipo_pago": "Efectivo",
+                "items": [{"id": self.plato.id, "tipo": "plato", "cantidad": 1}]
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertFalse(resp.json()["success"])
+
+        # Mismo intento con Admin autenticado: permitido
+        self.client.login(username="Mainch", password="Mainch1valpo")
+        resp_admin = self.client.post(
+            "/pedidos/crear/",
+            data=json.dumps({
+                "cliente": "Admin Delivery Manual",
+                "canal": "UberEats",
+                "tipo_pago": "Efectivo",
+                "items": [{"id": self.plato.id, "tipo": "plato", "cantidad": 1}]
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(resp_admin.status_code, 201)
+        self.assertTrue(resp_admin.json()["success"])
+
+    def test_kds_segmentation_local_vs_delivery(self):
+        """Verifica que la vista KDS segmente correctamente pedidos locales vs delivery."""
+        o_local = Orden.objects.create(
+            restaurante=self.restaurante_mainch,
+            cliente="Mesa 4",
+            canal_venta="Local",
+            estado=Orden.ESTADO_EN_CURSO
+        )
+        o_delivery = Orden.objects.create(
+            restaurante=self.restaurante_mainch,
+            cliente="Juan Delivery",
+            canal_venta="PedidosYa",
+            order_id_externo="PEYA-777",
+            estado=Orden.ESTADO_EN_CURSO
+        )
+
+        resp = self.client.get(
+            "/",
+            HTTP_HX_REQUEST="true"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("pedidos_local", resp.context)
+        self.assertIn("pedidos_delivery", resp.context)
+        self.assertIn(o_local, resp.context["pedidos_local"])
+        self.assertIn(o_delivery, resp.context["pedidos_delivery"])
+
+    def test_delivery_analytics_evolution(self):
+        """Verifica que la vista Data Análisis calcule métricas del canal delivery."""
+        self.client.login(username="Mainch", password="Mainch1valpo")
+
+        # Local completada: $5000
+        o_local = Orden.objects.create(
+            restaurante=self.restaurante_mainch,
+            cliente="Local 1",
+            canal_venta="Local",
+            estado=Orden.ESTADO_COMPLETADA
+        )
+        OrdenItem.objects.create(orden=o_local, plato=self.plato, cantidad=1, precio_unitario=5000.0)
+        o_local.save()
+
+        # Uber Eats completada: $13000
+        o_uber = Orden.objects.create(
+            restaurante=self.restaurante_mainch,
+            cliente="Uber 1",
+            canal_venta="UberEats",
+            estado=Orden.ESTADO_COMPLETADA
+        )
+        OrdenItem.objects.create(orden=o_uber, plato=self.plato, cantidad=2, precio_unitario=6500.0)
+        o_uber.save()
+
+        resp = self.client.get("/data_analisis/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["total_delivery_facturado"], 13000.0)
+        self.assertEqual(resp.context["total_ubereats"], 13000.0)
+        self.assertEqual(resp.context["total_peya"], 0.0)
+        self.assertEqual(resp.context["ticket_promedio_delivery"], 13000.0)
+        self.assertEqual(resp.context["ticket_promedio_local"], 5000.0)
+
 
 

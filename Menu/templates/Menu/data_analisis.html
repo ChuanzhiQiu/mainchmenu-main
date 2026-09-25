@@ -11,7 +11,7 @@
                 <span>Business Intelligence & Métricas</span>
             </div>
             <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Data Análisis de Ventas</h1>
-            <p class="text-sm text-slate-500 mt-1">Métricas clave, ticket promedio y rendimiento comercial del restaurante.</p>
+            <p class="text-sm text-slate-500 mt-1">Métricas clave, ticket promedio, rentabilidad y rendimiento de delivery.</p>
         </div>
 
         <form method="get" class="flex flex-wrap items-center gap-3">
@@ -46,7 +46,7 @@
             </div>
         </div>
 
-        <!-- KPI 2: Ticket Promedio -->
+        <!-- KPI 2: Ticket Promedio General -->
         <div class="bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 p-5 rounded-2xl shadow-md flex items-center justify-between">
             <div>
                 <p class="text-xs font-black uppercase tracking-wider text-amber-950/80">Ticket Promedio</p>
@@ -86,16 +86,88 @@
         </div>
     </div>
 
-    <!-- SECCIÓN DE GRÁFICOS PRINCIPALES -->
+    <!-- ========================================================================= -->
+    <!-- NUEVA SECCIÓN: EVOLUCIÓN Y RENDIMIENTO DEL DELIVERY (UBER EATS / PEYA)   -->
+    <!-- ========================================================================= -->
+    <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-slate-700">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-700/80 gap-4 mb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
+                    <i data-lucide="bike" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-black text-white tracking-tight">Evolución del Delivery</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Análisis comparativo de canales: Uber Eats, Pedidos Ya vs. Venta Local en Salón.</p>
+                </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-purple-500/30 text-purple-300 border border-purple-400/30">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+                <span>Price Tiers & APIs Activas</span>
+            </span>
+        </div>
+
+        <!-- 4 Tarjetas Comparativas Salón vs Delivery -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <!-- Facturación Delivery -->
+            <div class="bg-slate-800/80 p-4 rounded-2xl border border-purple-500/30">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-purple-300">Venta Delivery Total</span>
+                <h4 class="text-2xl font-black text-white mt-1">${{ total_delivery_facturado|floatformat:0 }}</h4>
+                <p class="text-xs text-slate-400 mt-1">{{ total_delivery_pedidos }} pedidos despachados</p>
+            </div>
+
+            <!-- Ticket Promedio Delivery -->
+            <div class="bg-slate-800/80 p-4 rounded-2xl border border-emerald-500/30">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Ticket Prom. Delivery</span>
+                <h4 class="text-2xl font-black text-emerald-400 mt-1">${{ ticket_promedio_delivery|floatformat:0 }}</h4>
+                <p class="text-xs text-slate-400 mt-1">vs ${{ ticket_promedio_local|floatformat:0 }} en Salón Local</p>
+            </div>
+
+            <!-- Participación Uber Eats -->
+            <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-300">Uber Eats</span>
+                    <span class="text-xs font-black px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400">{{ count_ubereats }} ped.</span>
+                </div>
+                <h4 class="text-xl font-black text-white mt-1">${{ total_ubereats|floatformat:0 }}</h4>
+                <p class="text-xs text-slate-400 mt-1">Canal app integrado</p>
+            </div>
+
+            <!-- Participación Pedidos Ya -->
+            <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-rose-400">Pedidos Ya</span>
+                    <span class="text-xs font-black px-2 py-0.5 rounded bg-rose-500/20 text-rose-400">{{ count_peya }} ped.</span>
+                </div>
+                <h4 class="text-xl font-black text-white mt-1">${{ total_peya|floatformat:0 }}</h4>
+                <p class="text-xs text-slate-400 mt-1">Canal app integrado</p>
+            </div>
+        </div>
+
+        <!-- Gráfico Evolución de Ventas Delivery -->
+        <div class="bg-slate-800/90 p-5 rounded-2xl border border-slate-700">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                    <i data-lucide="trending-up" class="w-4 h-4 text-purple-400"></i>
+                    <span>Tendencia Diaria de Facturación Delivery ($)</span>
+                </h3>
+                <span class="text-xs text-slate-400">Uber Eats & Pedidos Ya</span>
+            </div>
+            <div class="h-60">
+                <canvas id="chartDeliveryTiempo"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN DE GRÁFICOS GENERALES -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Gráfico 1: Ingresos Diarios -->
+        <!-- Gráfico 1: Ingresos Diarios Generales -->
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <i data-lucide="trending-up" class="w-4 h-4 text-emerald-600"></i>
-                    <span>Evolución de Ingresos ($)</span>
+                    <i data-lucide="dollar-sign" class="w-4 h-4 text-emerald-600"></i>
+                    <span>Evolución Total de Ingresos ($)</span>
                 </h2>
-                <span class="text-xs text-slate-400">Por día</span>
+                <span class="text-xs text-slate-400">Todos los canales</span>
             </div>
             <div class="h-64">
                 <canvas id="chartIngresos"></canvas>
@@ -144,7 +216,7 @@
             <div>
                 <h2 class="text-sm font-bold text-slate-900 mb-2 flex items-center gap-1.5">
                     <i data-lucide="truck" class="w-4 h-4 text-amber-600"></i>
-                    <span>Canales de Venta</span>
+                    <span>Distribución de Canales</span>
                 </h2>
                 <div class="h-56">
                     <canvas id="chartCanales"></canvas>
@@ -171,7 +243,44 @@ document.addEventListener("DOMContentLoaded", () => {
     const canalesLabels = {{ canales_venta_labels|safe }};
     const canalesData = {{ canales_venta_data|safe }};
 
-    // 1. Gráfico Ingresos Diarios (Line)
+    const deliveryTiempoLabels = {{ delivery_tiempo_labels|safe }};
+    const deliveryTiempoData = {{ delivery_tiempo_data|safe }};
+
+    // 0. Gráfico Evolución Delivery (Line)
+    const ctxDelivery = document.getElementById('chartDeliveryTiempo');
+    if (ctxDelivery && deliveryTiempoLabels.length > 0) {
+        new Chart(ctxDelivery, {
+            type: 'line',
+            data: {
+                labels: deliveryTiempoLabels,
+                datasets: [{
+                    label: 'Ventas Delivery ($)',
+                    data: deliveryTiempoData,
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#c084fc'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148, 163, 184, 0.1)' } },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#94a3b8', callback: v => '$' + v.toLocaleString() },
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' }
+                    }
+                }
+            }
+        });
+    }
+
+    // 1. Gráfico Ingresos Diarios Totales
     const ctxIngresos = document.getElementById('chartIngresos');
     if (ctxIngresos && ingresosLabels.length > 0) {
         new Chart(ctxIngresos, {
@@ -279,7 +388,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 labels: canalesLabels.length ? canalesLabels : ['Sin datos'],
                 datasets: [{
                     data: canalesData.length ? canalesData : [1],
-                    backgroundColor: ['#f59e0b', '#3b82f6', '#ec4899', '#14b8a6']
+                    backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#ec4899', '#8b5cf6']
                 }]
             },
             options: {

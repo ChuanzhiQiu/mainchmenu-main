@@ -31,6 +31,13 @@ urlpatterns = [
     path("plato/<int:plato_id>/receta/guardar/", views.guardar_ingrediente_receta, name="guardar_ingrediente_receta"),
     path("receta/item/<int:item_id>/eliminar/", views.eliminar_ingrediente_receta, name="eliminar_ingrediente_receta"),
 
+    # Rutas de Price Tiers y SKU Mapping por Canal (Local vs Delivery Apps)
+    path("plato/<int:plato_id>/price-tiers/", views.obtener_price_tiers_plato, name="obtener_price_tiers_plato"),
+    path("plato/<int:plato_id>/price-tiers/guardar/", views.guardar_price_tier_plato, name="guardar_price_tier_plato"),
+
+    # Webhooks para Integración de Apps de Delivery (Uber Eats y Pedidos Ya)
+    path("api/delivery/webhook/<str:plataforma>/", views.delivery_webhook_api, name="delivery_webhook_api"),
+
     # Rutas CRUD y Analítica
     path("crud/", views.crud, name="crud"),
     path('plato/guardar/', views.guardar_plato, name='guardar_plato'),

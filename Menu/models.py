@@ -1,19 +1,126 @@
 from decimal import Decimal
 import math
+import uuid
 from django.db import models
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.utils import timezone
 
-# Modelo para representar cada plato de manera individual
-class Plato(models.Model):
-    nombre = models.CharField(max_length=100)
-    valor = models.FloatField()
+
+# ==============================================================================
+# MULTI-RESTAURANTE / MULTI-TENANCY (MAINCH COMO CLIENTE BASE)
+# ==============================================================================
+
+class Restaurante(models.Model):
+    """
+    Representa a cada restaurante cliente dentro del sistema multi-inquilino.
+    Por defecto, el inquilino principal y único inicial es 'Mainch'.
+    """
+    nombre = models.CharField(max_length=100, unique=True, default="Mainch")
+    slug = models.SlugField(max_length=100, unique=True, default="mainch")
+    direccion = models.CharField(max_length=255, blank=True, default="Valparaíso, Chile")
+    telefono = models.CharField(max_length=50, blank=True, default="+56 9 1234 5678")
+    activo = models.BooleanField(default=True)
+    api_key_delivery = models.CharField(
+        max_length=100,
+        unique=True,
+        default=uuid.uuid4,
+        verbose_name="API Key Delivery (Webhooks)"
+    )
+    creado_el = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Restaurante"
+        verbose_name_plural = "Restaurantes"
 
     def __str__(self):
         return self.nombre
 
+
+def get_default_restaurante():
+    """Retorna o crea el restaurante por defecto 'Mainch'."""
+    restaurante, _ = Restaurante.objects.get_or_create(
+        slug="mainch",
+        defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile"}
+    )
+    return restaurante.pk
+
+
+# Modelo para representar cada plato de manera individual
+class Plato(models.Model):
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="platos",
+        default=get_default_restaurante
+    )
+    nombre = models.CharField(max_length=100)
+    valor = models.FloatField(verbose_name="Precio Base / Salón Local ($)")
+
+    def __str__(self):
+        return self.nombre
+
+    def get_precio_para_canal(self, canal: str) -> float:
+        """Devuelve el precio del plato según el canal de venta (Price Tiering)."""
+        precio_tier = self.precios_canales.filter(canal=canal, disponible=True).first()
+        if precio_tier and precio_tier.precio > 0:
+            return float(precio_tier.precio)
+        return float(self.valor)
+
+    def get_sku_para_canal(self, canal: str) -> str:
+        """Devuelve el SKU mapeado para un canal externo o un identificador por defecto."""
+        precio_tier = self.precios_canales.filter(canal=canal).first()
+        if precio_tier and precio_tier.sku_externo:
+            return precio_tier.sku_externo
+        return f"PLATO-{self.id}"
+
+
+# Price Tiering y SKU Mapping por Canal (Local vs Delivery Apps)
+class PlatoPrecioCanal(models.Model):
+    CANAL_CHOICES = [
+        ('Local', 'Local / Mesas'),
+        ('UberEats', 'Uber Eats'),
+        ('PedidosYa', 'Pedidos Ya'),
+        ('Delivery', 'Delivery Propio'),
+    ]
+
+    plato = models.ForeignKey(
+        Plato,
+        on_delete=models.CASCADE,
+        related_name='precios_canales'
+    )
+    canal = models.CharField(max_length=20, choices=CANAL_CHOICES)
+    sku_externo = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="SKU Externo en Plataforma",
+        help_text="Identificador único en Uber Eats o Pedidos Ya para sincronización automática."
+    )
+    precio = models.FloatField(
+        verbose_name="Precio en Canal ($)",
+        help_text="Precio con recargo de plataforma o precio específico para este canal."
+    )
+    disponible = models.BooleanField(
+        default=True,
+        verbose_name="Disponible en este canal"
+    )
+
+    class Meta:
+        verbose_name = "Price Tier y Mapeo SKU por Canal"
+        verbose_name_plural = "Price Tiers y Mapeos SKU"
+        unique_together = ('plato', 'canal')
+
+    def __str__(self):
+        return f"{self.plato.nombre} [{self.canal}]: ${self.precio} (SKU: {self.sku_externo or 'N/A'})"
+
+
 # Modelo para representar una promoción (colaciones, combos, etc.)
 class Menu(models.Model):
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="menus",
+        default=get_default_restaurante
+    )
     nombre = models.CharField(max_length=100)
     platos = models.ManyToManyField(Plato)
     precio_menus = models.FloatField()
@@ -23,7 +130,6 @@ class Menu(models.Model):
 
     @property
     def precio_real(self):
-        # Evita calcular si el objeto aún no está guardado
         if not self.pk:
             return 0
         return sum(plato.valor for plato in self.platos.all())
@@ -33,13 +139,10 @@ class Menu(models.Model):
         return self.precio_real - self.precio_menus
 
     def clean(self):
-        # Solo validar platos si el menú ya tiene un ID (es decir, ha sido guardado previamente)
         if self.pk and not self.platos.exists():
             raise ValidationError("El menú debe contener al menos un plato.")
 
-
     def save(self, *args, **kwargs):
-        # Llama a clean para realizar la validación antes de guardar
         self.clean()
         super().save(*args, **kwargs)
 
@@ -67,20 +170,46 @@ class Orden(models.Model):
         ('Transferencia', 'Transferencia'),
     ]
     
+    CANAL_LOCAL = 'Local'
+    CANAL_WHATSAPP = 'Whatsapp'
+    CANAL_UBER_EATS = 'UberEats'
+    CANAL_PEDIDOS_YA = 'PedidosYa'
+    CANAL_DELIVERY = 'Delivery'
+
     CANAL_CHOICES = [
-        ('Local','Local'),
-        ('Whatsapp','Whatsapp'),
-        ('Delivery', 'Delivery'),
+        (CANAL_LOCAL, 'Local / Salón'),
+        (CANAL_WHATSAPP, 'WhatsApp'),
+        (CANAL_UBER_EATS, 'Uber Eats'),
+        (CANAL_PEDIDOS_YA, 'Pedidos Ya'),
+        (CANAL_DELIVERY, 'Delivery Propio'),
     ]
 
-    cliente = models.CharField(max_length=40)
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="ordenes",
+        default=get_default_restaurante
+    )
+    cliente = models.CharField(max_length=60)
     fecha = models.DateField(auto_now_add=True)
     hora = models.TimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_EN_CURSO)
     tipo_pago = models.CharField(max_length=20, choices=PAGO_CHOICES, blank=True, null=True)
-    canal_venta = models.CharField(max_length=20, choices=CANAL_CHOICES, default='Local')
+    canal_venta = models.CharField(max_length=20, choices=CANAL_CHOICES, default=CANAL_LOCAL)
     monto_total = models.FloatField(default=0.0)
     descuento = models.FloatField(default=0.0, blank=True)
+    order_id_externo = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="ID Externo Delivery (Uber Eats / Pedidos Ya)"
+    )
+    detalles_entrega = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        verbose_name="Detalles de Entrega / Repartidor"
+    )
     stock_descontado = models.BooleanField(
         default=False,
         verbose_name="Stock Descontado",
@@ -94,7 +223,12 @@ class Orden(models.Model):
     )
 
     def __str__(self):
-        return f"Orden {self.id} - {self.cliente} ({self.estado})"
+        return f"Orden {self.id} - {self.cliente} ({self.canal_venta} - {self.estado})"
+
+    @property
+    def es_delivery(self) -> bool:
+        """Determina si la comanda proviene de canales de delivery."""
+        return self.canal_venta in [self.CANAL_UBER_EATS, self.CANAL_PEDIDOS_YA, self.CANAL_DELIVERY]
 
     def calcular_total(self):
         subtotal = sum(item.subtotal for item in self.items.all())
@@ -135,6 +269,11 @@ class OrdenItem(models.Model):
     plato = models.ForeignKey(Plato, on_delete=models.CASCADE, null=True, blank=True)
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, null=True, blank=True)
     cantidad = models.PositiveIntegerField(default=1)
+    precio_unitario = models.FloatField(
+        default=0.0,
+        verbose_name="Precio Unitario Venta ($)",
+        help_text="Precio congelado al momento de la venta respetando Price Tier del canal."
+    )
 
     def __str__(self):
         if self.plato:
@@ -143,13 +282,30 @@ class OrdenItem(models.Model):
             return f"{self.cantidad}x {self.menu.nombre}"
         return "Item sin plato ni menú"
 
+    def save(self, *args, **kwargs):
+        if not self.precio_unitario or self.precio_unitario <= 0:
+            if self.plato:
+                # Tomar price tier si la orden ya tiene canal
+                if self.orden_id and hasattr(self.orden, 'canal_venta'):
+                    self.precio_unitario = self.plato.get_precio_para_canal(self.orden.canal_venta)
+                else:
+                    self.precio_unitario = self.plato.valor
+            elif self.menu:
+                self.precio_unitario = self.menu.precio_menus
+        super().save(*args, **kwargs)
+
     @property
     def subtotal(self):
-        if self.plato:
-            return self.cantidad * self.plato.valor
-        elif self.menu:
-            return self.cantidad * self.menu.precio_menus
-        return 0
+        unit_price = self.precio_unitario
+        if not unit_price or unit_price <= 0:
+            if self.plato:
+                unit_price = self.plato.valor
+            elif self.menu:
+                unit_price = self.menu.precio_menus
+            else:
+                unit_price = 0
+        return self.cantidad * unit_price
+
 
 
 # ==============================================================================
@@ -161,6 +317,12 @@ class Insumo(models.Model):
     Representa una materia prima o insumo unitario en el inventario del restaurante.
     Soporta unidades de medida culinarias, stocks de seguridad y costeo unitario.
     """
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="insumos",
+        default=get_default_restaurante
+    )
     UNIDAD_KG = 'kg'
     UNIDAD_G = 'g'
     UNIDAD_LT = 'lt'

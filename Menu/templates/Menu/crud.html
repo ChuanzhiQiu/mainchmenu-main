@@ -54,12 +54,18 @@
                         <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ plato.id }}</td>
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ plato.nombre }}</td>
                         <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|floatformat:0 }}</td>
-                        <td class="py-3.5 px-6">
+                        <td class="py-3.5 px-6 space-y-1">
                             <button type="button" 
                                     class="btn-ver-receta inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition"
                                     data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">
                                 <i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>
-                                <span>Ver / Modificar Receta</span>
+                                <span>Receta / Insumos</span>
+                            </button>
+                            <button type="button" 
+                                    class="btn-ver-price-tiers inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition"
+                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}">
+                                <i data-lucide="tag" class="w-3.5 h-3.5"></i>
+                                <span>Precios Delivery & SKUs</span>
                             </button>
                         </td>
                         <td class="py-3.5 px-6 text-right space-x-1">
@@ -226,6 +232,71 @@
         <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
             <button type="button" id="btn-cerrar-receta-footer" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl transition">
                 Cerrar Receta
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL PRECIOS DELIVERY & SKUS (PRICE TIERS) ==================== -->
+<div id="modal-price-tiers" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Cabecera Modal -->
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 font-black">
+                    <i data-lucide="tag" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <h3 class="font-extrabold text-base" id="tiers-modal-titulo">Listas de Precios & SKUs</h3>
+                    <p class="text-xs text-slate-400" id="tiers-modal-subtitulo">Tarifas diferenciadas por canal (Local, Uber Eats, Pedidos Ya)</p>
+                </div>
+            </div>
+            <button type="button" id="btn-cerrar-tiers" class="text-slate-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <div class="p-6 overflow-y-auto space-y-6">
+            <!-- Info base del plato -->
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-bold text-slate-500 uppercase">Precio Base / Carta Salón:</span>
+                    <div class="text-xl font-black text-slate-900" id="tiers-precio-base">$0</div>
+                </div>
+                <div class="text-right text-xs text-slate-500 max-w-xs">
+                    Las órdenes de Uber Eats y Pedidos Ya aplican su propio precio y mapean con el SKU externo del catálogo.
+                </div>
+            </div>
+
+            <!-- Tabla de Tiers por Canal -->
+            <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                            <th class="py-3 px-4">Canal</th>
+                            <th class="py-3 px-4">Precio Venta</th>
+                            <th class="py-3 px-4">SKU Externo (App)</th>
+                            <th class="py-3 px-4 text-center">Disponible</th>
+                            <th class="py-3 px-4 text-right">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tiers-items-tbody" class="divide-y divide-slate-100 font-medium">
+                        <!-- Generado por JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 flex items-start gap-2.5">
+                <i data-lucide="info" class="w-4 h-4 text-blue-600 shrink-0 mt-0.5"></i>
+                <p>
+                    <strong>Integración Webhook Activa:</strong> Cuando Uber Eats o Pedidos Ya envíen un webhook a <code>/api/delivery/webhook/&lt;plataforma&gt;/</code>, el sistema buscará el plato usando el <strong>SKU Externo</strong> configurado aquí y asignará automáticamente el precio correspondiente.
+                </p>
+            </div>
+        </div>
+
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <button type="button" id="btn-cerrar-tiers-footer" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl transition">
+                Cerrar Ventana
             </button>
         </div>
     </div>
@@ -504,6 +575,127 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btn-cerrar-receta").addEventListener("click", () => modalReceta.classList.add("hidden"));
     document.getElementById("btn-cerrar-receta-footer").addEventListener("click", () => modalReceta.classList.add("hidden"));
+
+
+    /** 1.1 GESTIÓN DE PRECIOS DELIVERY & SKUS (PRICE TIERS) **/
+    const modalTiers = document.getElementById("modal-price-tiers");
+    const tiersModalTitulo = document.getElementById("tiers-modal-titulo");
+    const tiersPrecioBase = document.getElementById("tiers-precio-base");
+    const tiersTbody = document.getElementById("tiers-items-tbody");
+    let platoActualTiersId = null;
+
+    const cargarPriceTiers = (platoId) => {
+        platoActualTiersId = platoId;
+        fetch(`/plato/${platoId}/price-tiers/`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    window.showToast?.(data.message || "Error al cargar precios", "error");
+                    return;
+                }
+
+                tiersModalTitulo.textContent = `Precios & SKUs: ${data.plato.nombre}`;
+                tiersPrecioBase.textContent = `$${Math.round(data.plato.precio_base).toLocaleString()} CLP`;
+                tiersTbody.innerHTML = "";
+
+                data.tiers.forEach(t => {
+                    const tr = document.createElement("tr");
+                    tr.className = "hover:bg-slate-50 transition";
+                    const badgeClass = t.canal === 'UberEats' ? 'bg-emerald-100 text-emerald-800' :
+                                       (t.canal === 'PedidosYa' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-800');
+                    tr.innerHTML = `
+                        <td class="py-3 px-4">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ${badgeClass}">
+                                ${t.canal_nombre}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <div class="flex items-center gap-1">
+                                <span class="text-slate-400 font-bold">$</span>
+                                <input type="number" min="1" step="100" value="${Math.round(t.precio)}" 
+                                       id="tier-precio-${t.canal}" 
+                                       class="w-24 px-2.5 py-1 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        </td>
+                        <td class="py-3 px-4">
+                            <input type="text" value="${t.sku_externo || ''}" 
+                                   id="tier-sku-${t.canal}" 
+                                   placeholder="Ej: UBER-PLATO-01" 
+                                   class="w-36 px-2.5 py-1 font-mono text-xs border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-emerald-500">
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <input type="checkbox" id="tier-disp-${t.canal}" ${t.disponible ? 'checked' : ''} 
+                                   class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <button type="button" 
+                                    class="btn-guardar-tier inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition"
+                                    data-canal="${t.canal}">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                <span>Guardar</span>
+                            </button>
+                        </td>
+                    `;
+                    tiersTbody.appendChild(tr);
+                });
+
+                if (window.lucide) lucide.createIcons();
+                modalTiers.classList.remove("hidden");
+            })
+            .catch(err => {
+                console.error(err);
+                window.showToast?.("Error de comunicación con el servidor", "error");
+            });
+    };
+
+    tiersTbody.addEventListener("click", (e) => {
+        const btn = e.target.closest(".btn-guardar-tier");
+        if (!btn || !platoActualTiersId) return;
+
+        const canal = btn.dataset.canal;
+        const precio = document.getElementById(`tier-precio-${canal}`).value;
+        const sku_externo = document.getElementById(`tier-sku-${canal}`).value;
+        const disponible = document.getElementById(`tier-disp-${canal}`).checked;
+
+        btn.disabled = true;
+        btn.classList.add("opacity-50");
+
+        fetch(`/plato/${platoActualTiersId}/price-tiers/guardar/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrftoken
+            },
+            body: JSON.stringify({
+                canal: canal,
+                precio: precio,
+                sku_externo: sku_externo,
+                disponible: disponible
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.classList.remove("opacity-50");
+            if (data.success) {
+                window.showToast?.(data.message || "Tarifa actualizada con éxito", "success");
+            } else {
+                window.showToast?.(data.message || "Error al actualizar tarifa", "error");
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.classList.remove("opacity-50");
+            window.showToast?.("Error al guardar cambios de precio", "error");
+        });
+    });
+
+    document.querySelectorAll(".btn-ver-price-tiers").forEach(btn => {
+        btn.addEventListener("click", () => cargarPriceTiers(btn.dataset.id));
+    });
+
+    document.getElementById("btn-cerrar-tiers").addEventListener("click", () => modalTiers.classList.add("hidden"));
+    document.getElementById("btn-cerrar-tiers-footer").addEventListener("click", () => modalTiers.classList.add("hidden"));
 
 
     /** 2. SECCIÓN CREAR / EDITAR PLATOS **/
