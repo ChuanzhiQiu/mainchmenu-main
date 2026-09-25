@@ -107,7 +107,13 @@ WSGI_APPLICATION = 'MainchApp.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = (
+    os.environ.get('DATABASE_URL')
+    or os.environ.get('POSTGRES_URL')
+    or os.environ.get('SUPABASE_POSTGRES_URL')
+    or os.environ.get('SUPABASE_DATABASE_URL')
+    or os.environ.get('POSTGRES_PRISMA_URL')
+)
 
 if DATABASE_URL:
     try:
