@@ -1,0 +1,634 @@
+{% extends "Menu/base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>Gestión de Platos y Menús</h1>
+
+    <!-- Botones de acción para Platos y Menús -->
+    <div class="action-buttons">
+        <button class="btn btn-primary" id="btn-crear-plato">+ Nuevo Plato</button>
+        <button class="btn btn-primary" id="btn-crear-menu">+ Nuevo Menú</button>
+    </div>
+
+    <!-- Sección de Platos -->
+    <h2>Platos</h2>
+    <div class="scrollable-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nombre</th>
+                    <th>Valor</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for plato in platos %}
+                <tr>
+                    <td>{{ plato.id }}</td>
+                    <td>{{ plato.nombre }}</td>
+                    <td>${{ plato.valor }}</td>
+                    <td>
+                        <button class="btn btn-warning btn-editar" data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">Editar</button>
+                        <button class="btn btn-danger btn-eliminar" data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}">Eliminar</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+<!-- Sección de Menús -->
+<h2>Menús</h2>
+<div class="scrollable-table">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Precio</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for menu in menus %}
+            <tr>
+                <td>{{ menu.id }}</td>
+                <td>{{ menu.nombre }}</td>
+                <td>${{ menu.precio_menus }}</td>
+                <td>
+                    <!-- Botón Detalles -->
+                    <button class="btn btn-info btn-detalles-menu" data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
+                        Detalles
+                    </button>
+                    <!-- Botón Eliminar -->
+                    <button class="btn btn-danger btn-eliminar-menu" data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
+                        Eliminar
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal para Crear/Editar Plato -->
+<div id="modal-plato" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="width: 400px;">
+        <button id="cerrar-modal-plato" class="close">&times;</button>
+        <h2 id="modal-titulo-plato">Crear Plato</h2>
+        <form id="form-plato" method="POST" action="/plato/guardar/">
+            {% csrf_token %}
+            <input type="hidden" id="plato-id" name="id">
+            
+            <!-- Campo para Nombre -->
+            <div class="form-group">
+                <label for="plato-nombre">Nombre:</label>
+                <input type="text" id="plato-nombre" name="nombre" required class="form-control">
+            </div>
+            
+            <!-- Campo para Valor -->
+            <div class="form-group">
+                <label for="plato-valor">Valor:</label>
+                <input type="number" id="plato-valor" name="valor" required class="form-control">
+            </div>
+            
+            <!-- Botón para Guardar -->
+            <button type="submit" class="btn btn-success mt-3">Guardar</button>
+        </form>
+    </div>
+</div>
+
+
+<!-- Modal para Crear Menú -->
+<div id="modal-menu" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="width: 450px;">
+        <button id="cerrar-modal-menu" class="close">&times;</button>
+        <h2 id="modal-titulo-menu">Crear Menú</h2>
+        <form id="form-menu" method="POST" action="/menu/guardar/">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="menu-nombre">Nombre:</label>
+                <input type="text" id="menu-nombre" name="nombre" required class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="menu-precio">Precio:</label>
+                <input type="number" id="menu-precio" name="precio_menus" required class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="menu-plato-seleccionar">Agregar Plato:</label>
+                <select id="menu-plato-seleccionar" class="form-control">
+                    <option value="">Seleccione un plato</option>
+                    {% for plato in platos %}
+                    <option value="{{ plato.id }}">{{ plato.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="agregar-plato-menu" class="btn btn-primary mt-2">Agregar Plato</button>
+            </div>
+
+            <!-- Lista de platos seleccionados -->
+            <div id="platos-seleccionados" style="margin-top: 15px;">
+                <h4>Platos seleccionados:</h4>
+                <ul id="lista-platos" class="lista-platos"></ul>
+            </div>
+
+            <button type="submit" class="btn btn-success mt-3">Guardar</button>
+        </form>
+    </div>
+</div>
+
+<!-- Modal para Detalles del Menú -->
+<div id="modal-detalles-menu" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="width: 400px;">
+        <button id="cerrar-modal-detalles" class="close">&times;</button>
+        <h2 id="modal-detalles-titulo">Detalles del Menú</h2>
+        <ul id="lista-detalles-platos"></ul>
+    </div>
+</div>
+
+<!-- Modal para Confirmar Eliminación -->
+<div id="modal-eliminar" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="width: 400px;">
+        <h2>Confirmar Eliminación</h2>
+        <p id="mensaje-eliminar"></p>
+        <div class="modal-actions">
+            <button id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
+            <button id="cancelar-eliminar" class="btn btn-secondary">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        /** SECCIÓN PLATOS **/
+
+        const modalPlato = document.getElementById("modal-plato");
+        const formPlato = document.getElementById("form-plato");
+        const modalTituloPlato = document.getElementById("modal-titulo-plato");
+        const platoIdInput = document.getElementById("plato-id");
+        const platoNombreInput = document.getElementById("plato-nombre");
+        const platoValorInput = document.getElementById("plato-valor");
+
+        // Abrir modal para Crear/Editar Plato
+        const openModalPlato = (titulo, action, plato = null) => {
+            modalTituloPlato.textContent = titulo;
+            formPlato.action = action;
+
+            if (plato) {
+                platoIdInput.value = plato.id;
+                platoNombreInput.value = plato.nombre;
+                platoValorInput.value = plato.valor;
+            } else {
+                formPlato.reset();
+                platoIdInput.value = "";
+            }
+
+            modalPlato.style.display = "flex";
+        };
+
+        // Cerrar modal de Plato
+        const closeModalPlato = () => {
+            modalPlato.style.display = "none";
+        };
+
+        // Manejar envío del formulario de Plato
+        formPlato.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const formData = new FormData(formPlato);
+
+            fetch(formPlato.action, {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert("Error: " + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error al guardar Plato:", error);
+                    alert("Ocurrió un error al procesar la solicitud.");
+                });
+
+            closeModalPlato();
+        });
+
+        // Botón para Crear Plato
+        document.getElementById("btn-crear-plato").addEventListener("click", () => {
+            openModalPlato("Crear Plato", "/plato/guardar/");
+        });
+
+        // Botones para Editar Plato
+        document.querySelectorAll(".btn-editar").forEach(button => {
+            button.addEventListener("click", () => {
+                const id = button.dataset.id;
+                const nombre = button.dataset.nombre;
+                const valor = button.dataset.valor;
+                openModalPlato("Editar Plato", "/plato/guardar/", { id, nombre, valor });
+            });
+        });
+
+        // Cerrar modal de Plato
+        document.getElementById("cerrar-modal-plato").addEventListener("click", closeModalPlato);
+
+        /** SECCIÓN MENÚS **/
+
+        const modalMenu = document.getElementById("modal-menu");
+        const formMenu = document.getElementById("form-menu");
+        const listaPlatos = document.getElementById("lista-platos");
+        const agregarPlatoMenu = document.getElementById("agregar-plato-menu");
+        const menuPlatoSeleccionar = document.getElementById("menu-plato-seleccionar");
+        const platosSeleccionados = new Map();
+
+        // Actualizar lista de platos seleccionados
+        const actualizarListaPlatos = () => {
+            listaPlatos.innerHTML = "";
+            platosSeleccionados.forEach((nombre, id) => {
+                const li = document.createElement("li");
+                li.innerHTML = `${nombre} <button class="btn btn-danger btn-sm btn-remove" data-id="${id}">X</button>`;
+                listaPlatos.appendChild(li);
+            });
+        };
+
+        // Agregar plato al menú
+        agregarPlatoMenu.addEventListener("click", () => {
+            const platoId = menuPlatoSeleccionar.value;
+            const platoNombre = menuPlatoSeleccionar.options[menuPlatoSeleccionar.selectedIndex].text;
+
+            if (platoId && !platosSeleccionados.has(platoId)) {
+                platosSeleccionados.set(platoId, platoNombre);
+                actualizarListaPlatos();
+            }
+        });
+
+        // Eliminar plato de la lista seleccionada
+        listaPlatos.addEventListener("click", (e) => {
+            if (e.target.classList.contains("btn-remove")) {
+                const platoId = e.target.dataset.id;
+                platosSeleccionados.delete(platoId);
+                actualizarListaPlatos();
+            }
+        });
+
+        // Manejar envío del formulario de Menú
+        formMenu.addEventListener("submit", (e) => {
+    e.preventDefault();
+
+    // Convertimos el mapa de platos seleccionados a un array de IDs
+    const platosSeleccionadosArray = Array.from(platosSeleccionados.keys());
+    if (platosSeleccionadosArray.length === 0) {
+        alert("Debe seleccionar al menos un plato.");
+        return;
+    }
+
+    const formData = new FormData(formMenu);
+
+    // Agregamos cada plato como un campo separado para que `request.POST.getlist('platos')` funcione
+    platosSeleccionadosArray.forEach(platoId => {
+        formData.append("platos", platoId);
+    });
+
+    fetch(formMenu.action, {
+        method: "POST",
+        body: formData,
+        headers: {
+            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        })
+        .catch(error => {
+            console.error("Error al guardar Menú:", error);
+            alert("Ocurrió un error al procesar la solicitud.");
+        });
+
+    modalMenu.style.display = "none";
+});
+
+
+        // Botón para Crear Menú
+        document.getElementById("btn-crear-menu").addEventListener("click", () => {
+            formMenu.reset();
+            platosSeleccionados.clear();
+            actualizarListaPlatos();
+            modalMenu.style.display = "flex";
+        });
+
+        // Cerrar modal de Menú
+        document.getElementById("cerrar-modal-menu").addEventListener("click", () => {
+            modalMenu.style.display = "none";
+        });
+
+        /** SECCIÓN ELIMINAR **/
+
+        const modalEliminar = document.getElementById("modal-eliminar");
+        const mensajeEliminar = document.getElementById("mensaje-eliminar");
+        const confirmarEliminar = document.getElementById("confirmar-eliminar");
+        const cancelarEliminar = document.getElementById("cancelar-eliminar");
+
+        let eliminarEndpoint = "";
+        let eliminarData = {};
+
+        // Abrir modal de confirmación para eliminar
+        const openModalEliminar = (mensaje, endpoint, data) => {
+            mensajeEliminar.textContent = mensaje;
+            eliminarEndpoint = endpoint;
+            eliminarData = data;
+            modalEliminar.style.display = "flex";
+        };
+
+        // Cerrar modal de confirmación
+        const closeModalEliminar = () => {
+            modalEliminar.style.display = "none";
+            eliminarEndpoint = "";
+            eliminarData = {};
+        };
+
+        // Manejar clic en "Confirmar" eliminación
+        confirmarEliminar.addEventListener("click", () => {
+            if (eliminarEndpoint && eliminarData) {
+                fetch(eliminarEndpoint, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+                    },
+                    body: JSON.stringify(eliminarData)
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alert("Error: " + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error al eliminar:", error);
+                        alert("Ocurrió un error al procesar la solicitud.");
+                    });
+            }
+        });
+
+        // Cerrar modal al cancelar eliminación
+        cancelarEliminar.addEventListener("click", closeModalEliminar);
+
+        // Cerrar modal al hacer clic fuera del contenido
+        modalEliminar.addEventListener("click", (e) => {
+            if (e.target === modalEliminar) closeModalEliminar();
+        });
+
+        // Botones para Eliminar Plato
+        document.querySelectorAll(".btn-eliminar").forEach(button => {
+            button.addEventListener("click", () => {
+                const platoId = button.dataset.id;
+                const platoNombre = button.dataset.nombre;
+
+                openModalEliminar(
+                    `¿Estás seguro de que deseas eliminar el plato "${platoNombre}"?`,
+                    "/plato/eliminar/",
+                    { id: platoId }
+                );
+            });
+        });
+
+        // Botones para Eliminar Menú
+        document.querySelectorAll(".btn-eliminar-menu").forEach(button => {
+            button.addEventListener("click", () => {
+                const menuId = button.dataset.id;
+                const menuNombre = button.dataset.nombre;
+
+                openModalEliminar(
+                    `¿Estás seguro de que deseas eliminar el menú "${menuNombre}"?`,
+                    "/menu/eliminar/",
+                    { id: menuId }
+                );
+            });
+        });
+
+        /** SECCIÓN DETALLES MENÚ **/
+
+        const modalDetalles = document.getElementById("modal-detalles-menu");
+        const modalDetallesTitulo = document.getElementById("modal-detalles-titulo");
+        const listaDetallesPlatos = document.getElementById("lista-detalles-platos");
+        const cerrarModalDetalles = document.getElementById("cerrar-modal-detalles");
+
+        // Abrir modal de detalles
+        const openModalDetalles = (nombre, platos) => {
+            modalDetallesTitulo.textContent = `Platos en el menú: ${nombre}`;
+            listaDetallesPlatos.innerHTML = "";
+
+            if (platos.length === 0) {
+                listaDetallesPlatos.innerHTML = "<li>No hay platos asociados.</li>";
+            } else {
+                platos.forEach(plato => {
+                    const li = document.createElement("li");
+                    li.textContent = plato.nombre;
+                    listaDetallesPlatos.appendChild(li);
+                });
+            }
+
+            modalDetalles.style.display = "flex";
+        };
+
+        // Cerrar modal de detalles al hacer clic fuera del contenido
+        modalDetalles.addEventListener("click", (e) => {
+            if (e.target === modalDetalles) {
+                modalDetalles.style.display = "none";
+            }
+        });
+        // Cerrar modal de detalles
+        cerrarModalDetalles.addEventListener("click", () => {
+            modalDetalles.style.display = "none";
+        });
+
+        // Asegurar que al hacer clic fuera del contenido del modal también se cierre
+        modalDetalles.addEventListener("click", (e) => {
+            if (e.target === modalDetalles) {
+                modalDetalles.style.display = "none";
+            }
+        });
+
+        // Botones para Detalles de Menú
+        document.querySelectorAll(".btn-detalles-menu").forEach(button => {
+            button.addEventListener("click", () => {
+                const menuId = button.dataset.id;
+                const menuNombre = button.dataset.nombre;
+
+                // Solicitar los detalles del menú desde el servidor
+                fetch(`/menu/detalles/${menuId}/`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            openModalDetalles(menuNombre, data.platos);
+                        } else {
+                            alert("Error al obtener detalles del menú: " + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error al obtener detalles del menú:", error);
+                        alert("Ocurrió un error al cargar los detalles.");
+                    });
+            });
+        });
+
+        // Finalizar la configuración de los eventos y modales
+    });
+</script>
+
+<style>
+    /* Tablas */
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+
+    table th, table td {
+        border: 1px solid #dddddd;
+        padding: 8px;
+        text-align: left;
+    }
+
+    table th {
+        background-color: #00b2bf;
+        color: white;
+    }
+
+        /* Tablas con scroll */
+    .scrollable-table {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dddddd;
+        background-color: #f9f9f9;
+        margin-top: 20px;
+    }
+
+    .scrollable-table::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .scrollable-table::-webkit-scrollbar-thumb {
+        background-color: #cccccc;
+        border-radius: 5px;
+    }
+
+    .scrollable-table::-webkit-scrollbar-thumb:hover {
+        background-color: #aaaaaa;
+    }
+    
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        width: 450px;
+        font-family: Arial, sans-serif;
+        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .form-group label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 8px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        box-sizing: border-box;
+    }
+    
+    #lista-platos {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    #lista-platos li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    #lista-platos li:last-child {
+        border-bottom: none;
+    }
+
+    .btn-remove,
+    .btn-eliminar-menu{
+        background-color: red
+        color: white;
+        border: none;
+        padding: 8px 16px; 
+        border-radius: 5px; 
+        font-size: 16px; 
+        font-weight: bold; 
+        text-align: center; 
+        min-width: 100px; 
+        cursor: pointer; 
+        display: inline-block; 
+    }
+
+    .btn-info,
+    .btn-editar{
+        background-color: #17a2b8; /* Celeste (para Editar y Cancelar) o Rojo (para Eliminar) */
+        color: white;
+        border: none;
+        padding: 8px 16px; /* Ajuste igual para todos */
+        border-radius: 5px; /* Bordes redondeados */
+        font-size: 16px; /* Tamaño uniforme del texto */
+        font-weight: bold; /* Resaltar texto */
+        text-align: center; /* Centrado del texto */
+        min-width: 100px; /* Ancho mínimo para garantizar uniformidad */
+        cursor: pointer; /* Manito al pasar el mouse */
+        display: inline-block; /* Asegura consistencia */
+    }
+    
+    .btn-eliminar-menu:hover {
+        background-color: #c82333; /* Rojo más oscuro */
+    }
+    
+    .btn-editar:hover{
+        background-color: #138496; /* Celeste más oscuro */
+    }
+    .btn-secondary:hover {
+        background-color:rgb(84, 84, 84); 
+    }
+    
+</style>
+{% endblock %}

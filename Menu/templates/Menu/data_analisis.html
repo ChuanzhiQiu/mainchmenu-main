@@ -1,0 +1,335 @@
+{% extends 'Menu/base.html' %}
+
+{% block content %}
+<h1>Análisis de Datos</h1>
+
+<!-- Filtro de Fechas -->
+<form method="get">
+    <label for="fecha_inicio">Desde:</label>
+    <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}" required>
+    <label for="fecha_fin">Hasta:</label>
+    <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}" required>
+    <button type="submit" class="btn btn-primary">Aplicar</button>
+</form>
+
+<!-- Gráficos -->
+<div>
+    {% if ventas_tiempo_labels and ventas_tiempo_data %}
+    <h2>Ventas vs Tiempo</h2>
+    <canvas id="ventasTiempo" style="max-width: 80%; height: 300px; margin: auto;"></canvas>
+    {% else %}
+    <p>No hay datos disponibles para Ventas vs Tiempo.</p>
+    {% endif %}
+</div>
+
+<div>
+    {% if ingresos_tiempo_labels and ingresos_tiempo_data %}
+    <h2>Ingresos vs Tiempo</h2>
+    <canvas id="ingresosTiempo" style="max-width: 80%; height: 300px; margin: auto;"></canvas>
+    {% else %}
+    <p>No hay datos disponibles para Ingresos vs Tiempo.</p>
+    {% endif %}
+</div>
+
+
+<div>
+    <h2>Histograma de Platos Vendidos</h2>
+    <canvas id="platosVendidos" style="max-width: 60%; height: 300px; margin: auto;"></canvas>
+</div>
+
+<div>
+    <h2>Gráfico de Torta - Tipo de Pago</h2>
+    <canvas id="tiposPago" style="max-width: 40%; height: 300px; margin: auto;"></canvas>
+</div>
+
+<div>
+    <h2>Gráfico de Torta - Canal de Venta</h2>
+    <canvas id="canalesVenta" style="max-width: 40%; height: 300px; margin: auto;"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Obtener elementos del DOM para todos los gráficos
+        const ventasTiempoLabelsEl = document.getElementById('ventas_tiempo_labels');
+        const ventasTiempoDataEl = document.getElementById('ventas_tiempo_data');
+        const ingresosTiempoLabelsEl = document.getElementById('ingresos_tiempo_labels');
+        const ingresosTiempoDataEl = document.getElementById('ingresos_tiempo_data');
+        const platosLabelsEl = document.getElementById('platos_labels');
+        const platosDataEl = document.getElementById('platos_data');
+        const tiposPagoLabelsEl = document.getElementById('tipos_pago_labels');
+        const tiposPagoDataEl = document.getElementById('tipos_pago_data');
+        const canalesVentaLabelsEl = document.getElementById('canales_venta_labels');
+        const canalesVentaDataEl = document.getElementById('canales_venta_data');
+
+        // Función para generar un gráfico de líneas
+        function crearGraficoLineas(elementId, labels, data, label, borderColor) {
+            const canvas = document.getElementById(elementId);
+            if (!canvas) {
+                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
+                return;
+            }
+            new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: borderColor,
+                        fill: false,
+                    }],
+                },
+            });
+        }
+
+        // Función para generar un gráfico de barras
+        function crearGraficoBarras(elementId, labels, data, label, backgroundColor) {
+            const canvas = document.getElementById(elementId);
+            if (!canvas) {
+                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
+                return;
+            }
+            new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        backgroundColor: backgroundColor,
+                    }],
+                },
+            });
+        }
+
+        // Función para generar un gráfico de torta
+        function crearGraficoTortaConPorcentajes(elementId, labels, data) {
+            const canvas = document.getElementById(elementId);
+            if (!canvas) {
+                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
+                return;
+            }
+        
+            // Colores predefinidos para evitar repetición
+            const predefinedColors = [
+                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#66FF66', '#FF6666',
+                '#6666FF', '#FF66CC', '#FFCC66', '#66CCCC', '#CCCC66', '#CC66FF'
+            ];
+            const backgroundColors = labels.map((_, index) => predefinedColors[index % predefinedColors.length]);
+        
+            // Crear el gráfico de torta
+            new Chart(canvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: backgroundColors,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true, // Mantener proporción adecuada
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'right', // Coloca la leyenda a la derecha
+                            labels: {
+                                boxWidth: 10, // Tamaño de la caja de color
+                                padding: 10, // Espaciado entre etiquetas
+                            },
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const total = context.dataset.data.reduce((sum, value) => sum + value, 0);
+                                    const value = context.raw;
+                                    const percentage = ((value / total) * 100).toFixed(2);
+                                    return `${context.label}: ${value} (${percentage}%)`;
+                                },
+                            },
+                        },
+                        datalabels: {
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((sum, value) => sum + value, 0);
+                                const percentage = ((value / total) * 100).toFixed(2);
+                                return `${percentage}%`;
+                            },
+                            color: '#fff', // Texto blanco en los segmentos
+                            anchor: 'center',
+                        },
+                    },
+                },
+            });
+        }
+
+        // Procesar y generar el gráfico "Ventas vs Tiempo"
+        if (ventasTiempoLabelsEl && ventasTiempoDataEl) {
+            try {
+                const ventasTiempoLabels = JSON.parse(ventasTiempoLabelsEl.textContent || '[]');
+                const ventasTiempoData = JSON.parse(ventasTiempoDataEl.textContent || '[]');
+
+                if (ventasTiempoLabels.length > 0 && ventasTiempoData.length > 0) {
+                    crearGraficoLineas('ventasTiempo', ventasTiempoLabels, ventasTiempoData, 'Ventas', 'rgba(75, 192, 192, 1)');
+                } else {
+                    console.warn("Datos vacíos para Ventas vs Tiempo.");
+                }
+            } catch (error) {
+                console.error("Error al procesar los datos de Ventas vs Tiempo:", error);
+            }
+        }
+
+        // Procesar y generar el gráfico "Ingresos vs Tiempo"
+        if (ingresosTiempoLabelsEl && ingresosTiempoDataEl) {
+            try {
+                const ingresosTiempoLabels = JSON.parse(ingresosTiempoLabelsEl.textContent || '[]');
+                const ingresosTiempoData = JSON.parse(ingresosTiempoDataEl.textContent || '[]');
+
+                if (ingresosTiempoLabels.length > 0 && ingresosTiempoData.length > 0) {
+                    crearGraficoLineas('ingresosTiempo', ingresosTiempoLabels, ingresosTiempoData, 'Ingresos', 'rgba(255, 99, 132, 1)');
+                } else {
+                    console.warn("Datos vacíos para Ingresos vs Tiempo.");
+                }
+            } catch (error) {
+                console.error("Error al procesar los datos de Ingresos vs Tiempo:", error);
+            }
+        }
+
+        // Procesar y generar el histograma "Platos Vendidos"
+        if (platosLabelsEl && platosDataEl) {
+            try {
+                const platosLabels = JSON.parse(platosLabelsEl.textContent || '[]');
+                const platosData = JSON.parse(platosDataEl.textContent || '[]');
+
+                if (platosLabels.length > 0 && platosData.length > 0) {
+                    // Generar colores únicos para cada barra
+                    const backgroundColors = platosLabels.map(() => {
+                        return `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`;
+                    });
+
+                    // Crear el gráfico de barras
+                    const canvas = document.getElementById('platosVendidos');
+                    if (canvas) {
+                        new Chart(canvas.getContext('2d'), {
+                            type: 'bar',
+                            data: {
+                                labels: platosLabels, 
+                                datasets: [{
+                                    data: platosData, 
+                                    backgroundColor: backgroundColors, 
+                                }],
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                plugins: {
+                                    legend: {
+                                        display: false, 
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function (context) {
+                                                return `${context.label}: ${context.raw}`;
+                                            },
+                                        },
+                                    },
+                                },
+                                scales: {
+                                    x: {
+                                        ticks: {
+                                            autoSkip: false, // Mostrar todas las etiquetas
+                                            maxRotation: 45, // Rotación máxima para evitar solapamiento
+                                            minRotation: 0, // Sin rotación si no es necesario
+                                        },
+                                    },
+                                    y: {
+                                        beginAtZero: true, // Asegurar que el eje Y empieza en 0
+                                        ticks: {
+                                            stepSize: 1, // Escalado uniforme para las cantidades
+                                        },
+                                    },
+                                },
+                            },
+                        });
+                    }
+                } else {
+                    console.warn("Datos vacíos para Platos Vendidos.");
+                }
+            } catch (error) {
+                console.error("Error al procesar los datos de Platos Vendidos:", error);
+            }
+        }
+
+
+        // Procesar y generar el gráfico de torta "Tipos de Pago"
+        if (tiposPagoLabelsEl && tiposPagoDataEl) {
+            try {
+                const tiposPagoLabels = JSON.parse(tiposPagoLabelsEl.textContent || '[]');
+                const tiposPagoData = JSON.parse(tiposPagoDataEl.textContent || '[]');
+
+                if (tiposPagoLabels.length > 0 && tiposPagoData.length > 0) {
+                    crearGraficoTortaConPorcentajes('tiposPago', tiposPagoLabels, tiposPagoData);
+                } else {
+                    console.warn("Datos vacíos para Tipos de Pago.");
+                }
+            } catch (error) {
+                console.error("Error al procesar los datos de Tipos de Pago:", error);
+            }
+        }
+
+        // Procesar y generar el gráfico de torta "Canales de Venta"
+        if (canalesVentaLabelsEl && canalesVentaDataEl) {
+            try {
+                const canalesVentaLabels = JSON.parse(canalesVentaLabelsEl.textContent || '[]');
+                const canalesVentaData = JSON.parse(canalesVentaDataEl.textContent || '[]');
+
+                if (canalesVentaLabels.length > 0 && canalesVentaData.length > 0) {
+                    crearGraficoTortaConPorcentajes('canalesVenta', canalesVentaLabels, canalesVentaData);
+                } else {
+                    console.warn("Datos vacíos para Canales de Venta.");
+                }
+            } catch (error) {
+                console.error("Error al procesar los datos de Canales de Venta:", error);
+            }
+        }
+    });
+</script>
+
+
+
+<script type="application/json" id="ventas_tiempo_labels">
+    {{ ventas_tiempo_labels|safe }}
+</script>
+<script type="application/json" id="ventas_tiempo_data">
+    {{ ventas_tiempo_data|safe }}
+</script>
+<script type="application/json" id="ingresos_tiempo_labels">
+    {{ ingresos_tiempo_labels|safe }}
+</script>
+<script type="application/json" id="ingresos_tiempo_data">
+    {{ ingresos_tiempo_data|safe }}
+</script>
+<script type="application/json" id="platos_labels">
+    {{ platos_labels|safe }}
+</script>
+<script type="application/json" id="platos_data">
+    {{ platos_data|safe }}
+</script>
+<script type="application/json" id="tipos_pago_labels">
+    {{ tipos_pago_labels|safe }}
+</script>
+<script type="application/json" id="tipos_pago_data">
+    {{ tipos_pago_data|safe }}
+</script>
+<script type="application/json" id="canales_venta_labels">
+    {{ canales_venta_labels|safe }}
+</script>
+<script type="application/json" id="canales_venta_data">
+    {{ canales_venta_data|safe }}
+</script>
+
+
+
+{% endblock %}

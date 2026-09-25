@@ -1,0 +1,650 @@
+{% extends 'Menu/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- 1. Encabezado del Panel y Acciones Principales -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between pb-6 border-b border-slate-200 mb-6 gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm">
+                    <i data-lucide="boxes" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                        Control de Inventario y Alertas
+                    </h1>
+                    <p class="text-sm text-slate-500 mt-0.5">
+                        Monitoreo en tiempo real de materias primas, stocks críticos y auditoría de Kardex.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 flex-wrap">
+            <!-- Botón para abrir el modal de ajuste manual -->
+            <button type="button" 
+                    id="btn-abrir-modal-ajuste-general"
+                    onclick="abrirModalAjuste()" 
+                    class="inline-flex items-center justify-center px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 ease-in-out focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                <i data-lucide="sliders-horizontal" class="w-4 h-4 mr-2"></i>
+                <span>+ Ajuste Manual de Stock</span>
+            </button>
+
+            <!-- Acceso a POS y Cocina KDS -->
+            <a href="{% url 'Menu:pedidos_crear' %}" 
+               class="inline-flex items-center justify-center px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                <i data-lucide="shopping-cart" class="w-4 h-4 mr-1.5 text-slate-500"></i>
+                Ir a POS
+            </a>
+            <a href="{% url 'Menu:inicio' %}" 
+               class="inline-flex items-center justify-center px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+                <i data-lucide="utensils" class="w-4 h-4 mr-1.5 text-slate-500"></i>
+                Cocina KDS
+            </a>
+        </div>
+    </div>
+
+    <!-- 2. Tarjetas de Resumen Operativo (KPIs de Inventario) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <!-- KPI 1: Total Insumos -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Insumos</p>
+                    <p class="text-2xl font-bold text-slate-900 mt-1">{{ total_insumos }}</p>
+                </div>
+                <div class="p-3 bg-blue-50 text-blue-600 rounded-lg">
+                    <i data-lucide="layers" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="mt-3 text-xs text-slate-500 flex items-center">
+                <span class="text-blue-600 font-medium mr-1">Activos en catálogo</span>
+            </div>
+        </div>
+
+        <!-- KPI 2: Quiebre Crítico -->
+        <div class="bg-white p-5 rounded-xl border border-rose-200 shadow-sm hover:shadow transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-rose-600">En Quiebre Crítico</p>
+                    <p class="text-2xl font-bold text-rose-700 mt-1">{{ quiebre_count }}</p>
+                </div>
+                <div class="p-3 bg-rose-100 text-rose-700 rounded-lg">
+                    <i data-lucide="alert-octagon" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="mt-3 text-xs text-rose-600 flex items-center font-medium">
+                <span>Stock agotado o negativo (≤ 0)</span>
+            </div>
+        </div>
+
+        <!-- KPI 3: Bajo Mínimo -->
+        <div class="bg-white p-5 rounded-xl border border-amber-200 shadow-sm hover:shadow transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-amber-700">Bajo Stock Mínimo</p>
+                    <p class="text-2xl font-bold text-amber-700 mt-1">{{ bajo_minimo_count }}</p>
+                </div>
+                <div class="p-3 bg-amber-100 text-amber-700 rounded-lg">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="mt-3 text-xs text-amber-600 flex items-center font-medium">
+                <span>Alerta de reposición requerida</span>
+            </div>
+        </div>
+
+        <!-- KPI 4: Stock Normal / Valorización -->
+        <div class="bg-white p-5 rounded-xl border border-emerald-200 shadow-sm hover:shadow transition-shadow">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-emerald-700">Stock Normal</p>
+                    <p class="text-2xl font-bold text-emerald-700 mt-1">{{ normal_count }}</p>
+                </div>
+                <div class="p-3 bg-emerald-100 text-emerald-700 rounded-lg">
+                    <i data-lucide="check-circle" class="w-5 h-5"></i>
+                </div>
+            </div>
+            <div class="mt-3 text-xs text-slate-500">
+                <span>Niveles óptimos de operación</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Barra de Búsqueda y Filtros de Estado -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- Formulario de Búsqueda -->
+        <form method="GET" action="{% url 'Menu:inventario' %}" class="flex-1 flex items-center gap-2 max-w-md">
+            {% if filtro_estado %}
+                <input type="hidden" name="estado" value="{{ filtro_estado }}">
+            {% endif %}
+            {% if mostrar_inactivos %}
+                <input type="hidden" name="inactivos" value="1">
+            {% endif %}
+            <div class="relative w-full">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <i data-lucide="search" class="w-4 h-4"></i>
+                </div>
+                <input type="text" 
+                       name="q" 
+                       value="{{ query }}" 
+                       placeholder="Buscar por código o nombre..." 
+                       class="block w-full pl-9 pr-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-slate-900 placeholder-slate-400">
+            </div>
+            <button type="submit" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors">
+                Buscar
+            </button>
+            {% if query %}
+                <a href="{% url 'Menu:inventario' %}" class="p-2 text-slate-400 hover:text-slate-600 rounded-lg" title="Limpiar búsqueda">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </a>
+            {% endif %}
+        </form>
+
+        <!-- Filtros Rápidos por Pestañas de Estado -->
+        <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs font-medium text-slate-500 mr-1">Filtrar:</span>
+            <a href="{% url 'Menu:inventario' %}{% if query %}?q={{ query }}{% endif %}" 
+               class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors {% if not filtro_estado %}bg-slate-900 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}">
+                Todos ({{ total_insumos }})
+            </a>
+            <a href="{% url 'Menu:inventario' %}?estado=quiebre{% if query %}&q={{ query }}{% endif %}" 
+               class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors {% if filtro_estado == 'quiebre' %}bg-rose-600 text-white{% else %}bg-rose-50 text-rose-700 hover:bg-rose-100{% endif %}">
+                Quiebre ({{ quiebre_count }})
+            </a>
+            <a href="{% url 'Menu:inventario' %}?estado=bajo{% if query %}&q={{ query }}{% endif %}" 
+               class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors {% if filtro_estado == 'bajo' %}bg-amber-600 text-white{% else %}bg-amber-50 text-amber-700 hover:bg-amber-100{% endif %}">
+                Bajo Mínimo ({{ bajo_minimo_count }})
+            </a>
+            <a href="{% url 'Menu:inventario' %}?estado=normal{% if query %}&q={{ query }}{% endif %}" 
+               class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors {% if filtro_estado == 'normal' %}bg-emerald-600 text-white{% else %}bg-emerald-50 text-emerald-700 hover:bg-emerald-100{% endif %}">
+                Normal ({{ normal_count }})
+            </a>
+        </div>
+    </div>
+
+    <!-- 4. Tabla de Insumos y Materias Primas -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-10">
+        <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="clipboard-list" class="w-4 h-4 text-amber-600"></i>
+                Listado de Materias Primas
+            </h2>
+            <span class="text-xs text-slate-500 font-medium">
+                Mostrando {{ insumos|length }} registros
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-left text-sm" id="tabla-insumos">
+                <thead class="bg-slate-50 text-slate-600 font-semibold uppercase text-xs tracking-wider">
+                    <tr>
+                        <th scope="col" class="py-3.5 pl-5 pr-3">Código</th>
+                        <th scope="col" class="px-3 py-3.5">Nombre del Insumo</th>
+                        <th scope="col" class="px-3 py-3.5 text-center">Unidad</th>
+                        <th scope="col" class="px-3 py-3.5 text-right">Stock Actual</th>
+                        <th scope="col" class="px-3 py-3.5 text-right">Stock Mínimo</th>
+                        <th scope="col" class="px-3 py-3.5 text-right">Costo Unitario</th>
+                        <th scope="col" class="px-3 py-3.5 text-center">Estado / Alerta</th>
+                        <th scope="col" class="py-3.5 pl-3 pr-5 text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 bg-white">
+                    {% for insumo in insumos %}
+                    <tr class="hover:bg-amber-50/40 transition-colors {% if insumo.stock_actual <= 0 %}bg-rose-50/30{% elif insumo.stock_actual < insumo.stock_minimo %}bg-amber-50/20{% endif %}">
+                        <!-- Código -->
+                        <td class="py-3.5 pl-5 pr-3 font-mono text-xs font-bold text-slate-600">
+                            <span class="px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                                {{ insumo.codigo }}
+                            </span>
+                        </td>
+
+                        <!-- Nombre -->
+                        <td class="px-3 py-3.5 font-medium text-slate-900">
+                            {{ insumo.nombre }}
+                            {% if not insumo.activo %}
+                                <span class="ml-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200 text-slate-700">Inactivo</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Unidad de Medida -->
+                        <td class="px-3 py-3.5 text-center">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                                {{ insumo.unidad_medida }}
+                            </span>
+                        </td>
+
+                        <!-- Stock Actual -->
+                        <td class="px-3 py-3.5 text-right font-mono font-bold {% if insumo.stock_actual <= 0 %}text-rose-700{% elif insumo.stock_actual < insumo.stock_minimo %}text-amber-700{% else %}text-slate-900{% endif %}">
+                            {{ insumo.stock_actual }}
+                        </td>
+
+                        <!-- Stock Mínimo -->
+                        <td class="px-3 py-3.5 text-right font-mono text-slate-600">
+                            {{ insumo.stock_minimo }}
+                        </td>
+
+                        <!-- Costo Unitario -->
+                        <td class="px-3 py-3.5 text-right font-mono text-slate-600">
+                            ${{ insumo.costo_unitario }}
+                        </td>
+
+                        <!-- Badge de Estado (Quiebre Crítico, Bajo Mínimo (Alerta), Normal) -->
+                        <td class="px-3 py-3.5 text-center whitespace-nowrap">
+                            {% if insumo.stock_actual <= 0 %}
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300 badge-quiebre">
+                                    <i data-lucide="alert-octagon" class="w-3.5 h-3.5 mr-1 text-rose-600"></i>
+                                    Quiebre Crítico
+                                </span>
+                            {% elif insumo.stock_actual < insumo.stock_minimo %}
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 badge-alerta">
+                                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1 text-amber-600"></i>
+                                    Bajo Mínimo (Alerta)
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 badge-normal">
+                                    <i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1 text-emerald-600"></i>
+                                    Normal
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Acciones: Botón Ajuste -->
+                        <td class="py-3.5 pl-3 pr-5 text-center whitespace-nowrap">
+                            <button type="button" 
+                                    onclick="abrirModalAjusteParaInsumo('{{ insumo.id }}', '{{ insumo.nombre|escapejs }}', '{{ insumo.stock_actual }}', '{{ insumo.unidad_medida }}')"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5 mr-1"></i>
+                                Ajustar
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <!-- Caso borde: Catálogo sin insumos (TC-B03-31) -->
+                    <tr>
+                        <td colspan="8" class="py-12 text-center text-slate-500">
+                            <div class="flex flex-col items-center justify-center">
+                                <i data-lucide="package-open" class="w-12 h-12 text-slate-300 mb-3"></i>
+                                <p class="text-base font-semibold text-slate-700">No se encontraron insumos</p>
+                                <p class="text-xs text-slate-400 mt-1 max-w-sm">
+                                    {% if query %}
+                                        No hay insumos que coincidan con la búsqueda "{{ query }}".
+                                    {% else %}
+                                        No existen insumos registrados con los filtros aplicados.
+                                    {% endif %}
+                                </p>
+                                <a href="{% url 'Menu:inventario' %}" class="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-xs font-medium text-slate-700 rounded-lg transition-colors">
+                                    Ver todos los insumos
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 5. Contenedor de Sugerencias de Compra Inteligentes con IA (Milestone 4 Placeholder) -->
+    <div id="ai-recommendations-container" class="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl mb-10 border border-indigo-700">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-indigo-700/60">
+            <div class="flex items-start gap-4">
+                <div class="p-3 bg-indigo-500/30 border border-indigo-400/40 rounded-xl text-indigo-200">
+                    <i data-lucide="sparkles" class="w-7 h-7 text-amber-300"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-xl font-bold tracking-tight text-white">
+                            Sugerencias de Compra Inteligentes con IA
+                        </h2>
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-purple-500/40 text-purple-200 border border-purple-400/30">
+                            Milestone 4 Ready
+                        </span>
+                    </div>
+                    <p class="text-sm text-indigo-200 mt-1 max-w-2xl">
+                        Motor predictivo asistido por LLM y heurística ROP para cálculo automatizado de órdenes de reposición según demanda histórica de ventas y escandallo.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Botón de consulta al endpoint IA -->
+            <div>
+                <button type="button" 
+                        id="btn-consultar-ia" 
+                        onclick="consultarSugerenciasIA()"
+                        class="inline-flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold text-sm rounded-xl shadow-lg transition-all transform active:scale-95 focus:ring-2 focus:ring-offset-2 focus:ring-amber-400 focus:outline-none">
+                    <i data-lucide="bot" class="w-4 h-4 mr-2"></i>
+                    <span>Consultar Previsión IA</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Vista Previa / Estado Inicial del Contenedor de Recomendaciones -->
+        <div id="ai-recommendations-content" class="mt-6">
+            <div class="bg-indigo-950/40 border border-indigo-700/50 rounded-xl p-6 text-center">
+                <i data-lucide="brain-circuit" class="w-10 h-10 mx-auto text-indigo-300/70 mb-2"></i>
+                <h3 class="text-base font-semibold text-indigo-100">Módulo de IA en Preparación (Milestone 4)</h3>
+                <p class="text-xs text-indigo-300/80 mt-1 max-w-lg mx-auto">
+                    Al activar el motor de IA en el Milestone 4, este panel consultará el endpoint 
+                    <code class="px-1.5 py-0.5 bg-indigo-900/60 rounded text-amber-300 font-mono text-[11px]">/inventario/sugerencias-ia/</code>
+                    para desplegar la lista de insumos recomendados a comprar, presupuesto total y justificación de abastecimiento.
+                </p>
+                <div class="mt-4 inline-flex items-center gap-2 text-xs font-mono text-indigo-300/90 bg-indigo-900/50 px-3 py-1.5 rounded-lg border border-indigo-700/40">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Guardrails Pydantic v2 & Fallback ROP listos para integración</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ======================================================================= -->
+<!-- 6. MODAL DE AJUSTE MANUAL DE STOCK (F18)                                -->
+<!-- ======================================================================= -->
+<div id="modal-ajuste-stock" 
+     class="fixed inset-0 z-50 overflow-y-auto hidden bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200" 
+     aria-labelledby="modal-title" 
+     role="dialog" 
+     aria-modal="true">
+    
+    <div class="flex items-center justify-center min-h-screen px-4 py-6 text-center sm:p-0">
+        <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full border border-slate-100">
+            
+            <!-- Encabezado del Modal -->
+            <div class="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4 flex items-center justify-between text-white">
+                <div class="flex items-center gap-2.5">
+                    <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+                    <h3 class="text-lg font-bold" id="modal-title">
+                        Ajuste Manual de Stock
+                    </h3>
+                </div>
+                <button type="button" 
+                        onclick="cerrarModalAjuste()" 
+                        class="text-amber-100 hover:text-white transition-colors p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Formulario de Ajuste -->
+            <form id="form-ajuste-stock" method="POST" action="{% url 'Menu:ajustar_stock' %}" class="px-6 py-5 space-y-4">
+                {% csrf_token %}
+
+                <!-- Selección de Insumo -->
+                <div>
+                    <label for="modal_insumo_id" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Insumo a Ajustar *
+                    </label>
+                    <select name="insumo_id" 
+                            id="modal_insumo_id" 
+                            required 
+                            onchange="alCambiarInsumoSeleccionado()"
+                            class="block w-full rounded-lg border-slate-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm py-2">
+                        <option value="">-- Seleccione una materia prima --</option>
+                        {% for ins in todos_insumos_ajuste %}
+                            <option value="{{ ins.id }}" 
+                                    data-stock="{{ ins.stock_actual }}" 
+                                    data-unidad="{{ ins.unidad_medida }}">
+                                {{ ins.codigo }} - {{ ins.nombre }} (Actual: {{ ins.stock_actual }} {{ ins.unidad_medida }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Indicador de Stock Actual -->
+                <div class="bg-amber-50/60 border border-amber-200/70 rounded-lg p-3 flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-600">Stock Actual en Sistema:</span>
+                    <span id="modal-stock-actual-display" class="font-mono font-bold text-sm text-slate-900">
+                        --
+                    </span>
+                </div>
+
+                <!-- Tipo de Movimiento -->
+                <div>
+                    <label for="modal_tipo_movimiento" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Tipo de Movimiento Kardex *
+                    </label>
+                    <select name="tipo" 
+                            id="modal_tipo_movimiento" 
+                            required 
+                            class="block w-full rounded-lg border-slate-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 text-sm py-2">
+                        <option value="AJUSTE_MANUAL" selected>Ajuste Manual / Conteo Físico</option>
+                        <option value="INGRESO_COMPRA">Ingreso por Compra / Reabastecimiento</option>
+                        <option value="MERMA">Merma / Desperdicio / Deterioro</option>
+                    </select>
+                </div>
+
+                <!-- Nuevo Stock o Cantidad -->
+                <div>
+                    <label for="modal_nuevo_stock" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Nuevo Stock Físico Total *
+                    </label>
+                    <div class="relative rounded-lg shadow-sm">
+                        <input type="number" 
+                               step="0.001" 
+                               name="nuevo_stock" 
+                               id="modal_nuevo_stock" 
+                               required 
+                               placeholder="Ej: 15.500" 
+                               class="block w-full rounded-lg border-slate-300 focus:border-amber-500 focus:ring-amber-500 text-sm py-2 pr-12 font-mono">
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <span id="modal-unidad-display" class="text-xs font-bold text-slate-500">un</span>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">
+                        El sistema calculará automáticamente la cantidad delta a registrar en el Kardex auditable de stock.
+                    </p>
+                </div>
+
+                <!-- Notas de Auditoría -->
+                <div>
+                    <label for="modal_notas" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Notas de Auditoría (Opcional)
+                    </label>
+                    <textarea name="notas" 
+                              id="modal_notas" 
+                              rows="2" 
+                              placeholder="Ej: Conteo físico fin de turno, reposición de emergencia..."
+                              class="block w-full rounded-lg border-slate-300 focus:border-amber-500 focus:ring-amber-500 text-sm py-1.5"></textarea>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                    <button type="button" 
+                            onclick="cerrarModalAjuste()" 
+                            class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="submit" 
+                            class="px-5 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow transition-colors flex items-center gap-1.5">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span>Guardar Ajuste</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- 7. JAVASCRIPT DE INTERACTIVIDAD (MODAL, HTMX & CONSULTA IA)            -->
+<!-- ======================================================================= -->
+<script>
+    function abrirModalAjuste() {
+        const modal = document.getElementById('modal-ajuste-stock');
+        modal.classList.remove('hidden');
+        document.getElementById('form-ajuste-stock').reset();
+        document.getElementById('modal-stock-actual-display').textContent = '--';
+        document.getElementById('modal-unidad-display').textContent = 'un';
+    }
+
+    function cerrarModalAjuste() {
+        const modal = document.getElementById('modal-ajuste-stock');
+        modal.classList.add('hidden');
+    }
+
+    function abrirModalAjusteParaInsumo(id, nombre, stockActual, unidad) {
+        abrirModalAjuste();
+        const select = document.getElementById('modal_insumo_id');
+        select.value = id;
+        document.getElementById('modal-stock-actual-display').textContent = `${stockActual} ${unidad}`;
+        document.getElementById('modal-unidad-display').textContent = unidad;
+        document.getElementById('modal_nuevo_stock').value = stockActual;
+    }
+
+    function alCambiarInsumoSeleccionado() {
+        const select = document.getElementById('modal_insumo_id');
+        const selectedOption = select.options[select.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            const stock = selectedOption.getAttribute('data-stock');
+            const unidad = selectedOption.getAttribute('data-unidad');
+            document.getElementById('modal-stock-actual-display').textContent = `${stock} ${unidad}`;
+            document.getElementById('modal-unidad-display').textContent = unidad;
+            document.getElementById('modal_nuevo_stock').value = stock;
+        } else {
+            document.getElementById('modal-stock-actual-display').textContent = '--';
+            document.getElementById('modal-unidad-display').textContent = 'un';
+            document.getElementById('modal_nuevo_stock').value = '';
+        }
+    }
+
+    // Cerrar modal al presionar Escape
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            cerrarModalAjuste();
+        }
+    });
+
+    // Consulta Asíncrona al Endpoint de Sugerencias IA (F23 & C05 Integration)
+    async function consultarSugerenciasIA() {
+        const btn = document.getElementById('btn-consultar-ia');
+        const contenedor = document.getElementById('ai-recommendations-content');
+        
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i><span>Calculando Previsión...</span>';
+        if (window.lucide) lucide.createIcons();
+
+        try {
+            let response = await fetch('/api/sugerencias-compra/?dias=7');
+            if (!response.ok) {
+                response = await fetch('/inventario/sugerencias-ia/?dias=7');
+            }
+
+            if (response.ok) {
+                const data = await response.json();
+                renderizarSugerenciasIA(data);
+            } else {
+                contenedor.innerHTML = `
+                    <div class="bg-indigo-950/40 border border-rose-700/50 rounded-xl p-5 text-center">
+                        <i data-lucide="alert-triangle" class="w-8 h-8 mx-auto text-rose-400 mb-2"></i>
+                        <p class="text-sm font-semibold text-white">Error al obtener previsiones</p>
+                        <p class="text-xs text-indigo-300 mt-1">El servidor retornó estado ${response.status}. Intente nuevamente.</p>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            contenedor.innerHTML = `
+                <div class="bg-indigo-950/40 border border-amber-700/50 rounded-xl p-5 text-center">
+                    <i data-lucide="wifi-off" class="w-8 h-8 mx-auto text-amber-300 mb-2"></i>
+                    <p class="text-sm font-semibold text-white">Problema de conexión con el servicio</p>
+                    <p class="text-xs text-indigo-300 mt-1">${e.message || 'Verifique su conexión de red.'}</p>
+                </div>
+            `;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="bot" class="w-4 h-4 mr-2"></i><span>Actualizar Previsión IA</span>';
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+
+    function renderizarSugerenciasIA(data) {
+        const contenedor = document.getElementById('ai-recommendations-content');
+        const items = data.items_sugeridos || [];
+        const presupuesto = Number(data.presupuesto_estimado_total || 0);
+        const metodo = (data.metodo || 'HEURISTIC_FALLBACK').toUpperCase();
+        const dias = data.periodo_dias || 7;
+
+        if (items.length === 0) {
+            contenedor.innerHTML = `
+                <div class="bg-indigo-950/40 border border-emerald-700/50 rounded-xl p-6 text-center">
+                    <i data-lucide="check-circle-2" class="w-10 h-10 mx-auto text-emerald-400 mb-2"></i>
+                    <h3 class="text-base font-semibold text-emerald-100">Stock en Niveles Óptimos</h3>
+                    <p class="text-xs text-indigo-300/80 mt-1">No se detecta necesidad urgente de reabastecimiento para el horizonte proyectado (${dias} días).</p>
+                    <div class="mt-3 text-[11px] font-mono text-indigo-300/70">
+                        Motor: <span class="text-amber-300">${metodo}</span>
+                    </div>
+                </div>
+            `;
+            if (window.lucide) lucide.createIcons();
+            return;
+        }
+
+        let filasHtml = items.map(item => {
+            const nombre = item.nombre || item.insumo_nombre || item.codigo || item.insumo_codigo || 'Insumo';
+            const codigo = item.codigo || item.insumo_codigo || '';
+            const cantidad = Number(item.cantidad_sugerida || 0).toFixed(3);
+            const unidad = item.unidad_medida || 'un';
+            const costo = Number(item.costo_subtotal !== undefined ? item.costo_subtotal : (item.costo_estimado || 0)).toLocaleString('es-CL');
+            const justificacion = item.justificacion || 'Reabastecimiento por punto de reorden';
+            const stockActual = item.stock_actual !== undefined ? Number(item.stock_actual).toFixed(2) : '-';
+            const stockMinimo = item.stock_minimo !== undefined ? Number(item.stock_minimo).toFixed(2) : '-';
+
+            return `
+                <tr class="border-b border-indigo-800/60 hover:bg-indigo-900/40 transition-colors">
+                    <td class="py-2.5 px-3">
+                        <div class="font-semibold text-white">${nombre}</div>
+                        ${codigo ? `<div class="text-[10px] text-indigo-300 font-mono">${codigo} (Stock: ${stockActual} / Mín: ${stockMinimo})</div>` : ''}
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono text-amber-300 font-bold">
+                        ${cantidad} <span class="text-xs font-normal text-indigo-200">${unidad}</span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono text-indigo-200 font-semibold">
+                        $${costo}
+                    </td>
+                    <td class="py-2.5 px-3 text-xs text-indigo-200/90 max-w-xs">
+                        ${justificacion}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        const metodoBadge = metodo.includes("LLM") 
+            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/40">IA LLM Generada</span>`
+            : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40">Heurística ROP</span>`;
+
+        contenedor.innerHTML = `
+            <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between bg-indigo-950/70 p-3.5 rounded-xl border border-indigo-700/60 gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-indigo-300">Presupuesto Estimado (${dias} días):</span>
+                        <span class="text-xl font-mono font-bold text-amber-300">$${presupuesto.toLocaleString('es-CL')} CLP</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="text-indigo-300 text-xs">Método:</span>
+                        ${metodoBadge}
+                        <span class="text-indigo-400 text-xs font-mono">(${items.length} ítems)</span>
+                    </div>
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-indigo-800/60">
+                    <table class="min-w-full text-left text-xs">
+                        <thead class="bg-indigo-950/90 uppercase tracking-wider text-indigo-300 font-semibold">
+                            <tr>
+                                <th class="py-2.5 px-3">Insumo Requerido</th>
+                                <th class="py-2.5 px-3 text-right">Cantidad Sugerida</th>
+                                <th class="py-2.5 px-3 text-right">Costo Estimado</th>
+                                <th class="py-2.5 px-3">Justificación de Abastecimiento</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-indigo-800/40">
+                            ${filasHtml}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+    }
+</script>
+{% endblock %}

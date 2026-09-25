@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comanda #{{ orden.id }} - Mainch</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #f3f4f6;
+            color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: white;
+            padding: 10px 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .btn {
+            padding: 8px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            color: #374151;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .btn:hover { background: #f9fafb; }
+        .btn-primary {
+            background: #2563eb;
+            color: white;
+            border-color: #1d4ed8;
+        }
+        .btn-primary:hover { background: #1d4ed8; }
+        
+        .ticket-wrapper {
+            background: #fff;
+            padding: 14px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            transition: width 0.2s ease;
+        }
+        .ticket-58mm {
+            width: 58mm;
+            max-width: 58mm;
+            font-size: 11px;
+            line-height: 1.25;
+        }
+        .ticket-80mm {
+            width: 80mm;
+            max-width: 80mm;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-bold { font-weight: bold; }
+        .divider-dashed {
+            border-top: 1px dashed #000;
+            margin: 6px 0;
+        }
+        .divider-double {
+            border-top: 2px solid #000;
+            margin: 8px 0;
+        }
+        .header-title {
+            font-size: 1.3em;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+        .order-badge {
+            font-size: 1.35em;
+            font-weight: 900;
+            padding: 4px 0;
+        }
+        .meta-line {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+            margin: 2px 0;
+        }
+        .item-row {
+            margin: 5px 0;
+        }
+        .item-main {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+        .item-sub {
+            padding-left: 10px;
+            font-size: 0.85em;
+            color: #222;
+            font-style: italic;
+        }
+        .totals-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.15em;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+
+        @media print {
+            body {
+                background: transparent;
+                padding: 0;
+                display: block;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .ticket-wrapper {
+                box-shadow: none;
+                padding: 2mm;
+                margin: 0 auto;
+                border-radius: 0;
+            }
+            @page {
+                size: auto;
+                margin: 0mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar no-print">
+        <button onclick="window.print()" class="btn btn-primary">🖨️ Imprimir Ticket</button>
+        <button onclick="toggleFormat()" class="btn">📏 Formato: <span id="format-label">{{ formato }}</span></button>
+        <a href="{% url 'Menu:inicio' %}" class="btn">⬅️ Volver a Cocina</a>
+        <a href="{% url 'Menu:crear_orden' %}" class="btn">➕ Nuevo Pedido</a>
+    </div>
+
+    <div id="ticket" class="ticket-wrapper ticket-{{ formato }}">
+        <div class="text-center">
+            <div class="header-title">MAINCH RESTAURANTE</div>
+            <div style="font-size: 0.85em;">Comanda de Pedido</div>
+            <div class="divider-double"></div>
+            <div class="order-badge">ORDEN #{{ orden.id }}</div>
+            <div class="divider-dashed"></div>
+        </div>
+
+        <div class="meta-section">
+            <div class="meta-line">
+                <span>Fecha: {{ orden.fecha|date:"d/m/Y" }}</span>
+                <span>Hora: {{ orden.hora|time:"H:i" }}</span>
+            </div>
+            <div class="meta-line">
+                <span>Cliente: <strong>{{ orden.cliente }}</strong></span>
+            </div>
+            <div class="meta-line">
+                <span>Canal: <strong>{{ orden.canal_venta }}</strong></span>
+                <span>Estado: {{ orden.estado }}</span>
+            </div>
+            {% if orden.tipo_pago %}
+            <div class="meta-line">
+                <span>Pago: <strong>{{ orden.tipo_pago }}</strong></span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="divider-dashed"></div>
+        <div class="text-center text-bold" style="font-size: 0.9em;">DETALLE DE ITEMS</div>
+        <div class="divider-dashed"></div>
+
+        <div class="items-list">
+            {% for item in items_detalle %}
+            <div class="item-row">
+                <div class="item-main">
+                    <span>{{ item.cantidad }}x {{ item.nombre }}</span>
+                    <span>${{ item.subtotal|floatformat:0 }}</span>
+                </div>
+                {% if item.detalles %}
+                <div class="item-sub">
+                    ↳ Incluye: {{ item.detalles|join:", " }}
+                </div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="text-center">Sin items en la orden</div>
+            {% endfor %}
+        </div>
+
+        <div class="divider-dashed"></div>
+
+        <div class="totals-section">
+            {% if orden.descuento %}
+            <div class="meta-line">
+                <span>Descuento aplicado:</span>
+                <span>{{ orden.descuento }}%</span>
+            </div>
+            {% endif %}
+            <div class="totals-row">
+                <span>TOTAL:</span>
+                <span>${{ orden.monto_total|floatformat:0 }}</span>
+            </div>
+        </div>
+
+        <div class="divider-double"></div>
+        <div class="text-center" style="font-size: 0.85em; margin-top: 6px;">
+            ¡Gracias por su visita!<br>
+            www.mainch.cl
+        </div>
+    </div>
+
+    <script>
+        function toggleFormat() {
+            const ticket = document.getElementById('ticket');
+            const label = document.getElementById('format-label');
+            if (ticket.classList.contains('ticket-80mm')) {
+                ticket.classList.remove('ticket-80mm');
+                ticket.classList.add('ticket-58mm');
+                label.innerText = '58mm';
+            } else {
+                ticket.classList.remove('ticket-58mm');
+                ticket.classList.add('ticket-80mm');
+                label.innerText = '80mm';
+            }
+        }
+
+        {% if autoprint %}
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                window.print();
+            }, 350);
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

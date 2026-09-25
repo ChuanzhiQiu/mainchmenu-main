@@ -1,0 +1,190 @@
+{
+  "version": "1.0.0",
+  "generated_date": "2026-09-25",
+  "track": "Track A MBAn UAI 2026-B",
+  "scenarios": [
+    {
+      "id": "EVAL-01-QUIEBRE-CRITICO",
+      "name": "Quiebre de Stock Crítico y Reabastecimiento de Emergencia",
+      "description": "Simulación de quiebre de stock crítico (stockout crisis) en insumos clave con stock negativo y consumo activo, exigiendo orden de compra urgente.",
+      "category": "quiebre",
+      "context": {
+        "tipo": "quiebre_critico",
+        "dias_proyeccion": 7,
+        "lead_time_dias": 2,
+        "factor_demanda": 1.0,
+        "insumos": [
+          {
+            "id": 101,
+            "codigo": "INS-VACUNO",
+            "nombre": "Carne Vacuno Lomo Liso",
+            "unidad_medida": "kg",
+            "stock_actual": -2.5,
+            "stock_minimo": 10.0,
+            "consumo_diario": 6.0,
+            "costo_unitario": 8500.0
+          },
+          {
+            "id": 102,
+            "codigo": "INS-QUESO",
+            "nombre": "Queso Chanco Laminado",
+            "unidad_medida": "kg",
+            "stock_actual": 0.5,
+            "stock_minimo": 5.0,
+            "consumo_diario": 3.0,
+            "costo_unitario": 7200.0
+          }
+        ]
+      },
+      "expected": {
+        "requiere_compra": true,
+        "insumos_en_riesgo": ["INS-VACUNO", "INS-QUESO"],
+        "minimo_unidades_orden": {
+          "INS-VACUNO": 24.5,
+          "INS-QUESO": 10.5
+        }
+      }
+    },
+    {
+      "id": "EVAL-02-DEMANDA-NORMAL",
+      "name": "Demanda Normal y Operación Estable de Media Semana",
+      "description": "Operación de martes a jueves con consumo normal y niveles de stock holgados por encima del stock de seguridad.",
+      "category": "normal",
+      "context": {
+        "tipo": "demanda_normal",
+        "dias_proyeccion": 7,
+        "lead_time_dias": 2,
+        "factor_demanda": 1.0,
+        "insumos": [
+          {
+            "id": 103,
+            "codigo": "INS-PAPA",
+            "nombre": "Papa Lavada Seleccionada",
+            "unidad_medida": "kg",
+            "stock_actual": 30.0,
+            "stock_minimo": 10.0,
+            "consumo_diario": 4.0,
+            "costo_unitario": 1000.0
+          },
+          {
+            "id": 104,
+            "codigo": "INS-ACEITE",
+            "nombre": "Aceite Maravilla Bidón",
+            "unidad_medida": "lt",
+            "stock_actual": 20.0,
+            "stock_minimo": 8.0,
+            "consumo_diario": 2.0,
+            "costo_unitario": 2200.0
+          }
+        ]
+      },
+      "expected": {
+        "requiere_compra": false,
+        "insumos_en_riesgo": [],
+        "minimo_unidades_orden": {
+          "INS-PAPA": 0.0,
+          "INS-ACEITE": 0.0
+        }
+      }
+    },
+    {
+      "id": "EVAL-03-ALTA-DEMANDA-WEEKEND",
+      "name": "Fin de Semana de Alta Demanda (Surge de Pedidos y Delivery)",
+      "description": "Simulación de alta demanda de fin de semana con factor multiplicador 2.5x para prevenir quiebres durante turnos punta.",
+      "category": "surge",
+      "context": {
+        "tipo": "alta_demanda_weekend",
+        "dias_proyeccion": 3,
+        "lead_time_dias": 1,
+        "factor_demanda": 2.5,
+        "insumos": [
+          {
+            "id": 105,
+            "codigo": "INS-PAN-FRICA",
+            "nombre": "Pan Frica Artesanal",
+            "unidad_medida": "un",
+            "stock_actual": 35.0,
+            "stock_minimo": 20.0,
+            "consumo_diario": 45.0,
+            "costo_unitario": 350.0
+          },
+          {
+            "id": 106,
+            "codigo": "INS-TOMATE",
+            "nombre": "Tomate Larga Vida",
+            "unidad_medida": "kg",
+            "stock_actual": 12.0,
+            "stock_minimo": 8.0,
+            "consumo_diario": 16.0,
+            "costo_unitario": 1200.0
+          }
+        ]
+      },
+      "expected": {
+        "requiere_compra": true,
+        "insumos_en_riesgo": ["INS-PAN-FRICA", "INS-TOMATE"],
+        "minimo_unidades_orden": {
+          "INS-PAN-FRICA": 30.0,
+          "INS-TOMATE": 12.0
+        }
+      }
+    },
+    {
+      "id": "EVAL-04-JSON-CORRUPTO",
+      "name": "Resiliencia ante Respuesta JSON Corrupto o Malformado",
+      "description": "Verificación de los guardrails Pydantic y saneamiento de markdown sucio y cadenas con espacios extras.",
+      "category": "corrupt_guardrail",
+      "context": {
+        "tipo": "json_corrupto_guardrail",
+        "raw_response": "```json\n{\n  \"items_sugeridos\": [\n    {\n      \"insumo_id\": 107,\n      \"codigo\": \"  INS-POLLO  \",\n      \"nombre\": \"  Pechuga de Pollo  \",\n      \"unidad_medida\": \"kg\",\n      \"stock_actual\": 3.0,\n      \"stock_minimo\": 6.0,\n      \"consumo_diario_estimado\": 2.5,\n      \"cantidad_sugerida\": 8.0,\n      \"costo_unitario\": 4200.0,\n      \"costo_subtotal\": 33600.0,\n      \"justificacion\": \"  Reponer antes de turno viernes  \"\n    }\n  ],\n  \"presupuesto_estimado_total\": 33600.0,\n  \"periodo_dias\": 7,\n  \"metodo\": \"LLM_GENERATED\"\n}\n```"
+      },
+      "expected": {
+        "recuperacion_exitosa": true,
+        "codigo_sanitizado": "INS-POLLO",
+        "nombre_sanitizado": "Pechuga de Pollo",
+        "justificacion_sanitizada": "Reponer antes de turno viernes",
+        "presupuesto_conciliado": 33600.0
+      }
+    },
+    {
+      "id": "EVAL-05-FALLBACK-HEURISTICO",
+      "name": "Degradación Elegante a Fallback Heurístico ROP por Falla de Red",
+      "description": "Simulación de caída de conexión a red o timeout del proveedor LLM, activando el algoritmo determinístico de Punto de Reorden (ROP).",
+      "category": "fallback_heuristico",
+      "context": {
+        "tipo": "fallback_heuristico_rop",
+        "dias_proyeccion": 7,
+        "lead_time_dias": 2,
+        "simular_falla_llm": true,
+        "insumos": [
+          {
+            "id": 108,
+            "codigo": "INS-PALTA",
+            "nombre": "Palta Hass Extra",
+            "unidad_medida": "kg",
+            "stock_actual": 2.0,
+            "stock_minimo": 6.0,
+            "consumo_diario": 4.0,
+            "costo_unitario": 4500.0
+          },
+          {
+            "id": 109,
+            "codigo": "INS-SAL",
+            "nombre": "Sal Gruesa Parrillera",
+            "unidad_medida": "kg",
+            "stock_actual": 25.0,
+            "stock_minimo": 5.0,
+            "consumo_diario": 0.5,
+            "costo_unitario": 600.0
+          }
+        ]
+      },
+      "expected": {
+        "metodo": "HEURISTIC_FALLBACK",
+        "requiere_compra": true,
+        "sugerencia_palta": 12.0,
+        "sugerencia_sal": 0.0
+      }
+    }
+  ]
+}

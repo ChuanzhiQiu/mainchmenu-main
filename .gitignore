@@ -1,0 +1,28 @@
+# Ignorar entorno virtual
+env/
+venv/
+
+# Ignorar sistema operativo y editor
+.DS_Store
+.vscode/
+
+# Ignorar archivos de compilación de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar archivos de migraciones innecesarios de Django
+**/migrations/__pycache__/
+
+# Ignorar archivos temporales, logs y ejecuciones
+*.log
+*.tmp
+.agents/
+
+# Ignorar configuraciones locales
+local_settings.py
+
+# Ignorar archivos de personalización de Windows
+desktop.ini
+

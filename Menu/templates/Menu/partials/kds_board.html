@@ -1,0 +1,136 @@
+{% load static %}
+<div id="kds-board"
+     hx-get="{% url 'Menu:inicio' %}"
+     hx-trigger="every 5s, orderUpdated from:body"
+     hx-swap="outerHTML"
+     hx-target="#kds-board"
+     class="w-full">
+
+    {% if pedidos_en_curso %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {% for pedido in pedidos_en_curso %}
+                <div id="order-card-{{ pedido.id }}"
+                     class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between hover:shadow-md transition duration-200"
+                     data-order-id="{{ pedido.id }}">
+                    
+                    <!-- Card Header -->
+                    <div class="p-4 border-b border-slate-100 bg-slate-50 flex items-start justify-between gap-2">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xl font-extrabold text-slate-900">#{{ pedido.id }}</span>
+                                <span class="px-2.5 py-0.5 text-xs font-bold rounded-full uppercase tracking-wider
+                                    {% if pedido.canal_venta == 'Delivery' %}bg-purple-100 text-purple-800
+                                    {% elif pedido.canal_venta == 'Whatsapp' %}bg-emerald-100 text-emerald-800
+                                    {% elif pedido.canal_venta == 'PedidosYa' %}bg-rose-100 text-rose-800
+                                    {% elif pedido.canal_venta == 'UberEats' %}bg-green-100 text-green-800
+                                    {% else %}bg-blue-100 text-blue-800{% endif %}">
+                                    {{ pedido.canal_venta }}
+                                </span>
+                            </div>
+                            <h3 class="font-bold text-slate-800 text-base mt-1 truncate" title="{{ pedido.cliente }}">
+                                {{ pedido.cliente }}
+                            </h3>
+                        </div>
+
+                        <!-- Elapsed Time Badge -->
+                        <div class="elapsed-badge text-right"
+                             data-created="{{ pedido.fecha|date:'Y-m-d' }}T{{ pedido.hora|date:'H:i:s' }}">
+                            <span class="badge-pill inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 text-slate-700">
+                                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                                <span class="elapsed-text">{{ pedido.hora|date:"H:i" }}</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Items Body (Explosion of ordered dishes and combos) -->
+                    <div class="p-4 flex-1">
+                        <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
+                            <span>Comanda</span>
+                            <span class="text-slate-400 font-normal">{{ pedido.items.count }} ítems</span>
+                        </div>
+                        <ul class="space-y-2 divide-y divide-slate-100">
+                            {% for item in pedido.items.all %}
+                                {% if item.plato %}
+                                    <li class="pt-2 flex items-start justify-between text-sm leading-snug">
+                                        <div class="flex items-start gap-1.5">
+                                            <span class="font-bold text-amber-600 min-w-[24px]">{{ item.cantidad }}x</span>
+                                            <span class="font-semibold text-slate-800">{{ item.plato.nombre }}</span>
+                                        </div>
+                                    </li>
+                                {% elif item.menu %}
+                                    <li class="pt-2 text-sm leading-snug">
+                                        <div class="flex items-start gap-1.5 font-semibold text-indigo-700">
+                                            <span class="font-bold text-indigo-600 min-w-[24px]">{{ item.cantidad }}x</span>
+                                            <span>[COMBO] {{ item.menu.nombre }}</span>
+                                        </div>
+                                        {% if item.menu.platos.all %}
+                                            <ul class="pl-7 mt-1 space-y-0.5 text-xs text-slate-500">
+                                                {% for sub_plato in item.menu.platos.all %}
+                                                    <li class="flex items-center gap-1">• {{ sub_plato.nombre }}</li>
+                                                {% endfor %}
+                                            </ul>
+                                        {% endif %}
+                                    </li>
+                                {% else %}
+                                    <li class="pt-2 text-sm text-slate-400 italic">
+                                        <span class="font-bold min-w-[24px]">{{ item.cantidad }}x</span>
+                                        <span>{{ item.plato.nombre|default:"Item sin especificar" }}</span>
+                                    </li>
+                                {% endif %}
+                            {% empty %}
+                                <li class="text-xs text-slate-400 italic py-2">Sin ítems registrados</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <!-- Card Footer Actions -->
+                    <div class="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+                        <div class="text-xs text-slate-500">
+                            <span class="font-bold text-slate-800 text-sm">${{ pedido.monto_total|floatformat:0 }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <!-- Ticket Web Comanda -->
+                            <a href="{% url 'Menu:ticket_orden' pedido.id %}?format=80mm" target="_blank" rel="noopener noreferrer"
+                               class="p-2 text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold shadow-sm transition inline-flex items-center gap-1"
+                               title="Imprimir / Ver Ticket">
+                                <i data-lucide="printer" class="w-4 h-4"></i>
+                                <span class="hidden sm:inline">Ticket</span>
+                            </a>
+
+                            <!-- Eliminar Button -->
+                            <button type="button"
+                                    class="btn-eliminar-kds p-2 text-rose-600 hover:text-white hover:bg-rose-600 bg-white border border-rose-200 rounded-lg text-xs font-semibold shadow-sm transition inline-flex items-center gap-1"
+                                    data-id="{{ pedido.id }}" data-cliente="{{ pedido.cliente }}"
+                                    title="Eliminar Orden">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                <span class="hidden sm:inline">Eliminar</span>
+                            </button>
+
+                            <!-- Completar Button -->
+                            <button type="button"
+                                    class="btn-confirmar-kds px-3 py-2 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5"
+                                    data-id="{{ pedido.id }}"
+                                    data-cliente="{{ pedido.cliente }}"
+                                    data-total="{{ pedido.monto_total|floatformat:0 }}"
+                                    data-canal="{{ pedido.canal_venta }}"
+                                    title="Completar / Despachar Orden">
+                                <i data-lucide="check" class="w-4 h-4"></i>
+                                <span>Completar</span>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <!-- Empty State (TC-B03-21) -->
+        <div class="py-16 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200 max-w-xl mx-auto my-8">
+            <div class="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="check-circle" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">Cocina al Día</h3>
+            <p class="text-sm text-slate-500 mt-1">No hay pedidos pendientes en preparación.</p>
+        </div>
+    {% endif %}
+</div>
