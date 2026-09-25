@@ -92,15 +92,56 @@ def calcular_consumo_diario_insumos(
 
 def llm_call(prompt: str, system_prompt: str = "") -> str:
     """
-    Función de llamada al LLM externo.
-    Permite monkeypatching directo en tests e2e (TC-S04-01).
-    En ausencia de API key configurada, lanza RuntimeError para activar fallback limpio.
+    Función de llamada a la API de Google Gemini (v1beta/models/gemini-1.5-flash:generateContent).
+    Usa la librería estándar `urllib.request` para no requerir SDKs externos adicionales.
+    Si no hay API key o la llamada falla/timeout, lanza RuntimeError para activar el fallback heurístico (ROP).
     """
-    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("No LLM API key configured in environment. Triggering graceful fallback.")
 
-    raise NotImplementedError("Direct cloud API invocation disabled without live gateway")
+    import urllib.request
+    import urllib.error
+
+    # URL del endpoint de la API de Google AI Studio (Gemini 1.5 Flash)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # Estructura de payload oficial de la API de Gemini
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": f"{system_prompt}\n\n{prompt}" if system_prompt else prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json"
+        }
+    }
+
+    try:
+        req_data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_body = response.read().decode("utf-8")
+            res_json = json.loads(res_body)
+            # Extraer texto generado por Gemini
+            candidates = res_json.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text", "")
+            raise ValueError("Respuesta vacía o malformada de la API de Gemini.")
+    except Exception as err:
+        logger.warning(f"Error al invocar la API de Gemini: {err}")
+        raise RuntimeError(f"Fallo en API de Gemini: {err}") from err
+
 
 
 def _extraer_json_limpio(texto_raw: str) -> Dict[str, Any]:
