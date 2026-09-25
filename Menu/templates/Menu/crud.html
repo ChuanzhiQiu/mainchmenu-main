@@ -1,634 +1,694 @@
 {% extends "Menu/base.html" %}
 
 {% block content %}
-<div class="container">
-    <h1>Gestión de Platos y Menús</h1>
-
-    <!-- Botones de acción para Platos y Menús -->
-    <div class="action-buttons">
-        <button class="btn btn-primary" id="btn-crear-plato">+ Nuevo Plato</button>
-        <button class="btn btn-primary" id="btn-crear-menu">+ Nuevo Menú</button>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <!-- Encabezado de la página -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+            <div class="flex items-center gap-2 text-amber-600 font-bold text-xs uppercase tracking-wider mb-1">
+                <i data-lucide="chef-hat" class="w-4 h-4"></i>
+                <span>Gestión de Carta y Cocina</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Platos, Menús y Recetas</h1>
+            <p class="text-sm text-slate-500 mt-1">Configura los precios de venta, platos y los ingredientes/escandallos asociados a cada preparación.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="btn-crear-plato" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-sm hover:shadow transition inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Nuevo Plato</span>
+            </button>
+            <button id="btn-crear-menu" class="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition inline-flex items-center gap-2">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+                <span>Nuevo Menú Combo</span>
+            </button>
+        </div>
     </div>
 
-    <!-- Sección de Platos -->
-    <h2>Platos</h2>
-    <div class="scrollable-table">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Nombre</th>
-                    <th>Valor</th>
-                    <th>Acciones</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for plato in platos %}
-                <tr>
-                    <td>{{ plato.id }}</td>
-                    <td>{{ plato.nombre }}</td>
-                    <td>${{ plato.valor }}</td>
-                    <td>
-                        <button class="btn btn-warning btn-editar" data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">Editar</button>
-                        <button class="btn btn-danger btn-eliminar" data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}">Eliminar</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <!-- SECCIÓN 1: PLATOS Y ESCANDALLOS -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="utensils" class="w-5 h-5 text-amber-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Catálogo de Platos Individuales</h2>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
+                {{ platos|length }} platos registrados
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3 px-6">ID</th>
+                        <th class="py-3 px-6">Nombre del Plato</th>
+                        <th class="py-3 px-6">Precio de Venta</th>
+                        <th class="py-3 px-6">Escandallo / Receta</th>
+                        <th class="py-3 px-6 text-right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for plato in platos %}
+                    <tr class="hover:bg-slate-50/80 transition" id="fila-plato-{{ plato.id }}">
+                        <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ plato.id }}</td>
+                        <td class="py-3.5 px-6 font-bold text-slate-900">{{ plato.nombre }}</td>
+                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|floatformat:0 }}</td>
+                        <td class="py-3.5 px-6">
+                            <button type="button" 
+                                    class="btn-ver-receta inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition"
+                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">
+                                <i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>
+                                <span>Ver / Modificar Receta</span>
+                            </button>
+                        </td>
+                        <td class="py-3.5 px-6 text-right space-x-1">
+                            <button class="btn-editar inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">
+                                <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                                <span>Editar</span>
+                            </button>
+                            <button class="btn-eliminar inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
+                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                <span>Eliminar</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-slate-400">No hay platos dados de alta. Haz clic en "Nuevo Plato" para agregar uno.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 
-<!-- Sección de Menús -->
-<h2>Menús</h2>
-<div class="scrollable-table">
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Nombre</th>
-                <th>Precio</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for menu in menus %}
-            <tr>
-                <td>{{ menu.id }}</td>
-                <td>{{ menu.nombre }}</td>
-                <td>${{ menu.precio_menus }}</td>
-                <td>
-                    <!-- Botón Detalles -->
-                    <button class="btn btn-info btn-detalles-menu" data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
-                        Detalles
-                    </button>
-                    <!-- Botón Eliminar -->
-                    <button class="btn btn-danger btn-eliminar-menu" data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
-                        Eliminar
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <!-- SECCIÓN 2: MENÚS COMBOS -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="layers" class="w-5 h-5 text-indigo-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Menús y Combos Promocionales</h2>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
+                {{ menus|length }} menús registrados
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3 px-6">ID</th>
+                        <th class="py-3 px-6">Nombre del Combo</th>
+                        <th class="py-3 px-6">Precio Combo</th>
+                        <th class="py-3 px-6">Platos Incluidos</th>
+                        <th class="py-3 px-6 text-right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for menu in menus %}
+                    <tr class="hover:bg-slate-50/80 transition">
+                        <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ menu.id }}</td>
+                        <td class="py-3.5 px-6 font-bold text-slate-900">{{ menu.nombre }}</td>
+                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ menu.precio_menus|floatformat:0 }}</td>
+                        <td class="py-3.5 px-6">
+                            <button class="btn-detalles-menu inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
+                                    data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
+                                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                                <span>Ver platos incluidos</span>
+                            </button>
+                        </td>
+                        <td class="py-3.5 px-6 text-right space-x-1">
+                            <button class="btn-eliminar-menu inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 transition"
+                                    data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                <span>Eliminar</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-slate-400">No hay combos registrados. Haz clic en "Nuevo Menú Combo".</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
-<!-- Modal para Crear/Editar Plato -->
-<div id="modal-plato" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 400px;">
-        <button id="cerrar-modal-plato" class="close">&times;</button>
-        <h2 id="modal-titulo-plato">Crear Plato</h2>
-        <form id="form-plato" method="POST" action="/plato/guardar/">
+<!-- ==================== MODAL GESTOR DE ESCANDALLO / RECETA ==================== -->
+<div id="modal-receta" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
+        <!-- Cabecera Modal -->
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black">
+                    <i data-lucide="receipt" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <h3 class="font-extrabold text-base" id="receta-modal-titulo">Receta del Plato</h3>
+                    <p class="text-xs text-slate-400" id="receta-modal-subtitulo">Insumos y consumo por porción servida</p>
+                </div>
+            </div>
+            <button type="button" id="btn-cerrar-receta" class="text-slate-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <!-- Métricas Económicas del Plato -->
+        <div class="bg-slate-50 px-6 py-3 border-b border-slate-200 grid grid-cols-3 gap-3 text-center text-xs">
+            <div class="p-2 bg-white rounded-xl border border-slate-200">
+                <span class="text-slate-500 font-semibold block">Precio Venta</span>
+                <span class="text-sm font-black text-slate-900" id="receta-precio-venta">$0</span>
+            </div>
+            <div class="p-2 bg-white rounded-xl border border-slate-200">
+                <span class="text-slate-500 font-semibold block">Costo Materia Prima</span>
+                <span class="text-sm font-black text-rose-600" id="receta-costo-total">$0</span>
+            </div>
+            <div class="p-2 bg-white rounded-xl border border-slate-200">
+                <span class="text-slate-500 font-semibold block">Margen Bruto Estimado</span>
+                <span class="text-sm font-black text-emerald-600" id="receta-margen">$0 (0%)</span>
+            </div>
+        </div>
+
+        <!-- Contenido: Lista de Ingredientes actuales -->
+        <div class="p-6 overflow-y-auto flex-1 space-y-4">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500">Ingredientes Requeridos por Porción</h4>
+            
+            <div class="border border-slate-200 rounded-xl overflow-hidden">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+                        <tr>
+                            <th class="py-2.5 px-3">Insumo</th>
+                            <th class="py-2.5 px-3">Cantidad Requerida</th>
+                            <th class="py-2.5 px-3">Costo Subtotal</th>
+                            <th class="py-2.5 px-3 text-right">Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receta-items-tbody" class="divide-y divide-slate-100">
+                        <!-- Generado por JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Formulario para Añadir Insumo a la Receta -->
+            <form id="form-agregar-insumo-receta" class="bg-amber-50/50 p-4 rounded-xl border border-amber-200/60 space-y-3">
+                <h5 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-amber-600"></i>
+                    <span>Agregar o Modificar Insumo en la Receta</span>
+                </h5>
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                    <div class="sm:col-span-6">
+                        <label class="block text-[11px] font-bold text-slate-600 mb-1">Insumo / Materia Prima</label>
+                        <select id="receta-select-insumo" required class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-amber-500">
+                            <!-- Options generadas por JS -->
+                        </select>
+                    </div>
+                    <div class="sm:col-span-3">
+                        <label class="block text-[11px] font-bold text-slate-600 mb-1">Cantidad (<span id="receta-unidad-label">un</span>)</label>
+                        <input type="number" id="receta-input-cantidad" step="0.001" min="0.001" required placeholder="Ej: 0.150"
+                               class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div class="sm:col-span-3">
+                        <button type="submit" class="w-full py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs shadow-sm transition flex items-center justify-center gap-1">
+                            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                            <span>Vincular</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <button type="button" id="btn-cerrar-receta-footer" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs rounded-xl transition">
+                Cerrar Receta
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL CREAR / EDITAR PLATO ==================== -->
+<div id="modal-plato" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <h3 class="font-extrabold text-base" id="modal-titulo-plato">Crear Plato</h3>
+            <button type="button" id="cerrar-modal-plato" class="text-slate-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form id="form-plato" method="POST" action="{% url 'Menu:guardar_plato' %}" class="p-6 space-y-4">
             {% csrf_token %}
             <input type="hidden" id="plato-id" name="id">
-            
-            <!-- Campo para Nombre -->
-            <div class="form-group">
-                <label for="plato-nombre">Nombre:</label>
-                <input type="text" id="plato-nombre" name="nombre" required class="form-control">
+
+            <div>
+                <label for="plato-nombre" class="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre del Plato</label>
+                <input type="text" id="plato-nombre" name="nombre" required placeholder="Ej: Lomo Saltado"
+                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
             </div>
-            
-            <!-- Campo para Valor -->
-            <div class="form-group">
-                <label for="plato-valor">Valor:</label>
-                <input type="number" id="plato-valor" name="valor" required class="form-control">
+
+            <div>
+                <label for="plato-valor" class="block text-xs font-bold text-slate-700 uppercase mb-1">Precio de Venta ($)</label>
+                <input type="number" id="plato-valor" name="valor" step="100" min="0" required placeholder="Ej: 7500"
+                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
             </div>
-            
-            <!-- Botón para Guardar -->
-            <button type="submit" class="btn btn-success mt-3">Guardar</button>
+
+            <div class="pt-2 flex justify-end gap-2">
+                <button type="button" id="cancelar-modal-plato" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
+                    Cancelar
+                </button>
+                <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition">
+                    Guardar Plato
+                </button>
+            </div>
         </form>
     </div>
 </div>
 
-
-<!-- Modal para Crear Menú -->
-<div id="modal-menu" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 450px;">
-        <button id="cerrar-modal-menu" class="close">&times;</button>
-        <h2 id="modal-titulo-menu">Crear Menú</h2>
-        <form id="form-menu" method="POST" action="/menu/guardar/">
+<!-- ==================== MODAL CREAR MENÚ COMBO ==================== -->
+<div id="modal-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 border border-slate-100 overflow-hidden">
+        <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <h3 class="font-extrabold text-base">Crear Menú Combo</h3>
+            <button type="button" id="cerrar-modal-menu" class="text-slate-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <form id="form-menu" method="POST" action="{% url 'Menu:guardar_menu' %}" class="p-6 space-y-4">
             {% csrf_token %}
-            <div class="form-group">
-                <label for="menu-nombre">Nombre:</label>
-                <input type="text" id="menu-nombre" name="nombre" required class="form-control">
+            <div>
+                <label for="menu-nombre" class="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre del Menú</label>
+                <input type="text" id="menu-nombre" name="nombre" required placeholder="Ej: Combo Ejecutivo"
+                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
             </div>
-            <div class="form-group">
-                <label for="menu-precio">Precio:</label>
-                <input type="number" id="menu-precio" name="precio_menus" required class="form-control">
+
+            <div>
+                <label for="menu-precio" class="block text-xs font-bold text-slate-700 uppercase mb-1">Precio Total del Combo ($)</label>
+                <input type="number" id="menu-precio" name="precio_menus" step="100" min="0" required placeholder="Ej: 6990"
+                       class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
             </div>
-            <div class="form-group">
-                <label for="menu-plato-seleccionar">Agregar Plato:</label>
-                <select id="menu-plato-seleccionar" class="form-control">
-                    <option value="">Seleccione un plato</option>
-                    {% for plato in platos %}
-                    <option value="{{ plato.id }}">{{ plato.nombre }}</option>
-                    {% endfor %}
-                </select>
-                <button type="button" id="agregar-plato-menu" class="btn btn-primary mt-2">Agregar Plato</button>
+
+            <div class="pt-2">
+                <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Agregar Platos al Combo</label>
+                <div class="flex gap-2">
+                    <select id="menu-plato-seleccionar" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800">
+                        <option value="">Selecciona un plato...</option>
+                        {% for plato in platos %}
+                        <option value="{{ plato.id }}">{{ plato.nombre }} (${{ plato.valor|floatformat:0 }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" id="agregar-plato-menu" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition">
+                        Agregar
+                    </button>
+                </div>
             </div>
 
             <!-- Lista de platos seleccionados -->
-            <div id="platos-seleccionados" style="margin-top: 15px;">
-                <h4>Platos seleccionados:</h4>
-                <ul id="lista-platos" class="lista-platos"></ul>
+            <div class="border border-slate-200 rounded-xl p-3 bg-slate-50/50 min-h-[80px]">
+                <p class="text-[11px] font-bold text-slate-500 uppercase mb-2">Platos Seleccionados:</p>
+                <ul id="lista-platos" class="space-y-1.5 text-xs"></ul>
             </div>
 
-            <button type="submit" class="btn btn-success mt-3">Guardar</button>
+            <div class="pt-2 flex justify-end gap-2">
+                <button type="button" id="cancelar-modal-menu" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
+                    Cancelar
+                </button>
+                <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-sm transition">
+                    Crear Menú
+                </button>
+            </div>
         </form>
     </div>
 </div>
 
-<!-- Modal para Detalles del Menú -->
-<div id="modal-detalles-menu" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 400px;">
-        <button id="cerrar-modal-detalles" class="close">&times;</button>
-        <h2 id="modal-detalles-titulo">Detalles del Menú</h2>
-        <ul id="lista-detalles-platos"></ul>
+<!-- ==================== MODAL DETALLES DEL MENÚ ==================== -->
+<div id="modal-detalles-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 border border-slate-100 p-6 space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="font-extrabold text-base text-slate-900" id="modal-detalles-titulo">Detalles del Menú</h3>
+            <button type="button" id="cerrar-modal-detalles" class="text-slate-400 hover:text-slate-600">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <ul id="lista-detalles-platos" class="divide-y divide-slate-100 text-xs font-semibold text-slate-700"></ul>
     </div>
 </div>
 
-<!-- Modal para Confirmar Eliminación -->
-<div id="modal-eliminar" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 400px;">
-        <h2>Confirmar Eliminación</h2>
-        <p id="mensaje-eliminar"></p>
-        <div class="modal-actions">
-            <button id="confirmar-eliminar" class="btn btn-danger">Eliminar</button>
-            <button id="cancelar-eliminar" class="btn btn-secondary">Cancelar</button>
+<!-- ==================== MODAL CONFIRMAR ELIMINACIÓN ==================== -->
+<div id="modal-eliminar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 border border-slate-100 p-6 space-y-4">
+        <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+        </div>
+        <div class="text-center">
+            <h3 class="text-base font-extrabold text-slate-900">Confirmar Eliminación</h3>
+            <p id="mensaje-eliminar" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+        <div class="flex gap-2">
+            <button id="cancelar-eliminar" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
+                Cancelar
+            </button>
+            <button id="confirmar-eliminar" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition">
+                Sí, Eliminar
+            </button>
         </div>
     </div>
 </div>
 
 <script>
-    document.addEventListener("DOMContentLoaded", () => {
-        /** SECCIÓN PLATOS **/
+document.addEventListener("DOMContentLoaded", () => {
+    let platoActualRecetaId = null;
 
-        const modalPlato = document.getElementById("modal-plato");
-        const formPlato = document.getElementById("form-plato");
-        const modalTituloPlato = document.getElementById("modal-titulo-plato");
-        const platoIdInput = document.getElementById("plato-id");
-        const platoNombreInput = document.getElementById("plato-nombre");
-        const platoValorInput = document.getElementById("plato-valor");
-
-        // Abrir modal para Crear/Editar Plato
-        const openModalPlato = (titulo, action, plato = null) => {
-            modalTituloPlato.textContent = titulo;
-            formPlato.action = action;
-
-            if (plato) {
-                platoIdInput.value = plato.id;
-                platoNombreInput.value = plato.nombre;
-                platoValorInput.value = plato.valor;
-            } else {
-                formPlato.reset();
-                platoIdInput.value = "";
-            }
-
-            modalPlato.style.display = "flex";
-        };
-
-        // Cerrar modal de Plato
-        const closeModalPlato = () => {
-            modalPlato.style.display = "none";
-        };
-
-        // Manejar envío del formulario de Plato
-        formPlato.addEventListener("submit", (e) => {
-            e.preventDefault();
-            const formData = new FormData(formPlato);
-
-            fetch(formPlato.action, {
-                method: "POST",
-                body: formData,
-                headers: {
-                    "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
+    // Helper CSRF
+    const getCookie = (name) => {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
                 }
-            })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.reload();
-                    } else {
-                        alert("Error: " + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error("Error al guardar Plato:", error);
-                    alert("Ocurrió un error al procesar la solicitud.");
+            }
+        }
+        return cookieValue;
+    };
+    const csrftoken = getCookie('csrftoken');
+
+    /** 1. GESTIÓN DE ESCANDALLOS / RECETAS **/
+    const modalReceta = document.getElementById("modal-receta");
+    const recetaModalTitulo = document.getElementById("receta-modal-titulo");
+    const recetaPrecioVenta = document.getElementById("receta-precio-venta");
+    const recetaCostoTotal = document.getElementById("receta-costo-total");
+    const recetaMargen = document.getElementById("receta-margen");
+    const recetaTbody = document.getElementById("receta-items-tbody");
+    const recetaSelectInsumo = document.getElementById("receta-select-insumo");
+    const recetaInputCantidad = document.getElementById("receta-input-cantidad");
+    const recetaUnidadLabel = document.getElementById("receta-unidad-label");
+    const formAgregarInsumo = document.getElementById("form-agregar-insumo-receta");
+
+    let insumosDisponiblesCache = [];
+
+    const cargarReceta = (platoId) => {
+        platoActualRecetaId = platoId;
+        fetch(`/plato/${platoId}/receta/`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.success) {
+                    window.showToast?.(data.message || "Error al cargar receta", "error");
+                    return;
+                }
+
+                recetaModalTitulo.textContent = `Receta: ${data.plato.nombre}`;
+                recetaPrecioVenta.textContent = `$${Math.round(data.plato.valor).toLocaleString()}`;
+                recetaCostoTotal.textContent = `$${Math.round(data.plato.costo_total).toLocaleString()}`;
+                recetaMargen.textContent = `$${Math.round(data.plato.margen_bruto).toLocaleString()} (${data.plato.porcentaje_margen}%)`;
+
+                // Renderizar items de la receta
+                recetaTbody.innerHTML = "";
+                if (data.items.length === 0) {
+                    recetaTbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-slate-400">Este plato no tiene insumos asignados todavía.</td></tr>`;
+                } else {
+                    data.items.forEach(it => {
+                        const tr = document.createElement("tr");
+                        tr.className = "hover:bg-slate-50";
+                        tr.innerHTML = `
+                            <td class="py-2.5 px-3 font-semibold text-slate-800">${it.insumo_nombre} <span class="text-slate-400 text-[10px]">(${it.insumo_codigo})</span></td>
+                            <td class="py-2.5 px-3 font-mono font-bold text-slate-900">${it.cantidad} ${it.unidad}</td>
+                            <td class="py-2.5 px-3 text-slate-600 font-semibold">$${Math.round(it.costo_subtotal)}</td>
+                            <td class="py-2.5 px-3 text-right">
+                                <button type="button" class="btn-eliminar-item-receta text-rose-500 hover:text-rose-700 p-1" data-id="${it.id}">
+                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                </button>
+                            </td>
+                        `;
+                        recetaTbody.appendChild(tr);
+                    });
+                }
+
+                // Cargar selector de insumos
+                insumosDisponiblesCache = data.insumos_disponibles;
+                recetaSelectInsumo.innerHTML = `<option value="">Seleccione insumo...</option>`;
+                data.insumos_disponibles.forEach(ins => {
+                    recetaSelectInsumo.innerHTML += `<option value="${ins.id}" data-unidad="${ins.unidad}">[${ins.codigo}] ${ins.nombre} (${ins.unidad})</option>`;
                 });
 
-            closeModalPlato();
-        });
-
-        // Botón para Crear Plato
-        document.getElementById("btn-crear-plato").addEventListener("click", () => {
-            openModalPlato("Crear Plato", "/plato/guardar/");
-        });
-
-        // Botones para Editar Plato
-        document.querySelectorAll(".btn-editar").forEach(button => {
-            button.addEventListener("click", () => {
-                const id = button.dataset.id;
-                const nombre = button.dataset.nombre;
-                const valor = button.dataset.valor;
-                openModalPlato("Editar Plato", "/plato/guardar/", { id, nombre, valor });
+                if (window.lucide) lucide.createIcons();
+                modalReceta.classList.remove("hidden");
+            })
+            .catch(err => {
+                console.error(err);
+                window.showToast?.("Error al conectar con el servidor", "error");
             });
-        });
+    };
 
-        // Cerrar modal de Plato
-        document.getElementById("cerrar-modal-plato").addEventListener("click", closeModalPlato);
-
-        /** SECCIÓN MENÚS **/
-
-        const modalMenu = document.getElementById("modal-menu");
-        const formMenu = document.getElementById("form-menu");
-        const listaPlatos = document.getElementById("lista-platos");
-        const agregarPlatoMenu = document.getElementById("agregar-plato-menu");
-        const menuPlatoSeleccionar = document.getElementById("menu-plato-seleccionar");
-        const platosSeleccionados = new Map();
-
-        // Actualizar lista de platos seleccionados
-        const actualizarListaPlatos = () => {
-            listaPlatos.innerHTML = "";
-            platosSeleccionados.forEach((nombre, id) => {
-                const li = document.createElement("li");
-                li.innerHTML = `${nombre} <button class="btn btn-danger btn-sm btn-remove" data-id="${id}">X</button>`;
-                listaPlatos.appendChild(li);
-            });
-        };
-
-        // Agregar plato al menú
-        agregarPlatoMenu.addEventListener("click", () => {
-            const platoId = menuPlatoSeleccionar.value;
-            const platoNombre = menuPlatoSeleccionar.options[menuPlatoSeleccionar.selectedIndex].text;
-
-            if (platoId && !platosSeleccionados.has(platoId)) {
-                platosSeleccionados.set(platoId, platoNombre);
-                actualizarListaPlatos();
-            }
-        });
-
-        // Eliminar plato de la lista seleccionada
-        listaPlatos.addEventListener("click", (e) => {
-            if (e.target.classList.contains("btn-remove")) {
-                const platoId = e.target.dataset.id;
-                platosSeleccionados.delete(platoId);
-                actualizarListaPlatos();
-            }
-        });
-
-        // Manejar envío del formulario de Menú
-        formMenu.addEventListener("submit", (e) => {
-    e.preventDefault();
-
-    // Convertimos el mapa de platos seleccionados a un array de IDs
-    const platosSeleccionadosArray = Array.from(platosSeleccionados.keys());
-    if (platosSeleccionadosArray.length === 0) {
-        alert("Debe seleccionar al menos un plato.");
-        return;
-    }
-
-    const formData = new FormData(formMenu);
-
-    // Agregamos cada plato como un campo separado para que `request.POST.getlist('platos')` funcione
-    platosSeleccionadosArray.forEach(platoId => {
-        formData.append("platos", platoId);
+    recetaSelectInsumo.addEventListener("change", () => {
+        const selected = recetaSelectInsumo.options[recetaSelectInsumo.selectedIndex];
+        recetaUnidadLabel.textContent = selected.dataset.unidad || "un";
     });
 
-    fetch(formMenu.action, {
-        method: "POST",
-        body: formData,
-        headers: {
-            "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
-        }
-    })
-        .then(response => response.json())
+    // Guardar insumo en receta
+    formAgregarInsumo.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const insumoId = recetaSelectInsumo.value;
+        const cantidad = recetaInputCantidad.value;
+
+        if (!insumoId || !cantidad || !platoActualRecetaId) return;
+
+        fetch(`/plato/${platoActualRecetaId}/receta/guardar/`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrftoken
+            },
+            body: JSON.stringify({ insumo_id: insumoId, cantidad: cantidad })
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.success) {
+                window.showToast?.(res.message, "success");
+                formAgregarInsumo.reset();
+                cargarReceta(platoActualRecetaId);
+            } else {
+                window.showToast?.(res.message, "error");
+            }
+        });
+    });
+
+    // Eliminar item de receta (delegación de eventos)
+    recetaTbody.addEventListener("click", (e) => {
+        const btn = e.target.closest(".btn-eliminar-item-receta");
+        if (!btn) return;
+        const itemId = btn.dataset.id;
+        fetch(`/receta/item/${itemId}/eliminar/`, {
+            method: "POST",
+            headers: { "X-CSRFToken": csrftoken }
+        })
+        .then(res => res.json())
+        .then(res => {
+            if (res.success) {
+                window.showToast?.(res.message, "info");
+                cargarReceta(platoActualRecetaId);
+            }
+        });
+    });
+
+    // Botones para abrir modal de receta en tabla
+    document.querySelectorAll(".btn-ver-receta").forEach(btn => {
+        btn.addEventListener("click", () => cargarReceta(btn.dataset.id));
+    });
+
+    document.getElementById("btn-cerrar-receta").addEventListener("click", () => modalReceta.classList.add("hidden"));
+    document.getElementById("btn-cerrar-receta-footer").addEventListener("click", () => modalReceta.classList.add("hidden"));
+
+
+    /** 2. SECCIÓN CREAR / EDITAR PLATOS **/
+    const modalPlato = document.getElementById("modal-plato");
+    const formPlato = document.getElementById("form-plato");
+    const modalTituloPlato = document.getElementById("modal-titulo-plato");
+    const platoIdInput = document.getElementById("plato-id");
+    const platoNombreInput = document.getElementById("plato-nombre");
+    const platoValorInput = document.getElementById("plato-valor");
+
+    document.getElementById("btn-crear-plato").addEventListener("click", () => {
+        modalTituloPlato.textContent = "Crear Nuevo Plato";
+        formPlato.reset();
+        platoIdInput.value = "";
+        modalPlato.classList.remove("hidden");
+    });
+
+    document.querySelectorAll(".btn-editar").forEach(btn => {
+        btn.addEventListener("click", () => {
+            modalTituloPlato.textContent = "Editar Plato";
+            platoIdInput.value = btn.dataset.id;
+            platoNombreInput.value = btn.dataset.nombre;
+            platoValorInput.value = btn.dataset.valor;
+            modalPlato.classList.remove("hidden");
+        });
+    });
+
+    const cerrarModalPlato = () => modalPlato.classList.add("hidden");
+    document.getElementById("cerrar-modal-plato").addEventListener("click", cerrarModalPlato);
+    document.getElementById("cancelar-modal-plato").addEventListener("click", cerrarModalPlato);
+
+    formPlato.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const formData = new FormData(formPlato);
+        fetch(formPlato.action, {
+            method: "POST",
+            body: formData,
+            headers: { "X-CSRFToken": csrftoken }
+        })
+        .then(res => res.json())
         .then(data => {
             if (data.success) {
                 window.location.reload();
             } else {
                 alert("Error: " + data.message);
             }
-        })
-        .catch(error => {
-            console.error("Error al guardar Menú:", error);
-            alert("Ocurrió un error al procesar la solicitud.");
         });
-
-    modalMenu.style.display = "none";
-});
-
-
-        // Botón para Crear Menú
-        document.getElementById("btn-crear-menu").addEventListener("click", () => {
-            formMenu.reset();
-            platosSeleccionados.clear();
-            actualizarListaPlatos();
-            modalMenu.style.display = "flex";
-        });
-
-        // Cerrar modal de Menú
-        document.getElementById("cerrar-modal-menu").addEventListener("click", () => {
-            modalMenu.style.display = "none";
-        });
-
-        /** SECCIÓN ELIMINAR **/
-
-        const modalEliminar = document.getElementById("modal-eliminar");
-        const mensajeEliminar = document.getElementById("mensaje-eliminar");
-        const confirmarEliminar = document.getElementById("confirmar-eliminar");
-        const cancelarEliminar = document.getElementById("cancelar-eliminar");
-
-        let eliminarEndpoint = "";
-        let eliminarData = {};
-
-        // Abrir modal de confirmación para eliminar
-        const openModalEliminar = (mensaje, endpoint, data) => {
-            mensajeEliminar.textContent = mensaje;
-            eliminarEndpoint = endpoint;
-            eliminarData = data;
-            modalEliminar.style.display = "flex";
-        };
-
-        // Cerrar modal de confirmación
-        const closeModalEliminar = () => {
-            modalEliminar.style.display = "none";
-            eliminarEndpoint = "";
-            eliminarData = {};
-        };
-
-        // Manejar clic en "Confirmar" eliminación
-        confirmarEliminar.addEventListener("click", () => {
-            if (eliminarEndpoint && eliminarData) {
-                fetch(eliminarEndpoint, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value
-                    },
-                    body: JSON.stringify(eliminarData)
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            window.location.reload();
-                        } else {
-                            alert("Error: " + data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Error al eliminar:", error);
-                        alert("Ocurrió un error al procesar la solicitud.");
-                    });
-            }
-        });
-
-        // Cerrar modal al cancelar eliminación
-        cancelarEliminar.addEventListener("click", closeModalEliminar);
-
-        // Cerrar modal al hacer clic fuera del contenido
-        modalEliminar.addEventListener("click", (e) => {
-            if (e.target === modalEliminar) closeModalEliminar();
-        });
-
-        // Botones para Eliminar Plato
-        document.querySelectorAll(".btn-eliminar").forEach(button => {
-            button.addEventListener("click", () => {
-                const platoId = button.dataset.id;
-                const platoNombre = button.dataset.nombre;
-
-                openModalEliminar(
-                    `¿Estás seguro de que deseas eliminar el plato "${platoNombre}"?`,
-                    "/plato/eliminar/",
-                    { id: platoId }
-                );
-            });
-        });
-
-        // Botones para Eliminar Menú
-        document.querySelectorAll(".btn-eliminar-menu").forEach(button => {
-            button.addEventListener("click", () => {
-                const menuId = button.dataset.id;
-                const menuNombre = button.dataset.nombre;
-
-                openModalEliminar(
-                    `¿Estás seguro de que deseas eliminar el menú "${menuNombre}"?`,
-                    "/menu/eliminar/",
-                    { id: menuId }
-                );
-            });
-        });
-
-        /** SECCIÓN DETALLES MENÚ **/
-
-        const modalDetalles = document.getElementById("modal-detalles-menu");
-        const modalDetallesTitulo = document.getElementById("modal-detalles-titulo");
-        const listaDetallesPlatos = document.getElementById("lista-detalles-platos");
-        const cerrarModalDetalles = document.getElementById("cerrar-modal-detalles");
-
-        // Abrir modal de detalles
-        const openModalDetalles = (nombre, platos) => {
-            modalDetallesTitulo.textContent = `Platos en el menú: ${nombre}`;
-            listaDetallesPlatos.innerHTML = "";
-
-            if (platos.length === 0) {
-                listaDetallesPlatos.innerHTML = "<li>No hay platos asociados.</li>";
-            } else {
-                platos.forEach(plato => {
-                    const li = document.createElement("li");
-                    li.textContent = plato.nombre;
-                    listaDetallesPlatos.appendChild(li);
-                });
-            }
-
-            modalDetalles.style.display = "flex";
-        };
-
-        // Cerrar modal de detalles al hacer clic fuera del contenido
-        modalDetalles.addEventListener("click", (e) => {
-            if (e.target === modalDetalles) {
-                modalDetalles.style.display = "none";
-            }
-        });
-        // Cerrar modal de detalles
-        cerrarModalDetalles.addEventListener("click", () => {
-            modalDetalles.style.display = "none";
-        });
-
-        // Asegurar que al hacer clic fuera del contenido del modal también se cierre
-        modalDetalles.addEventListener("click", (e) => {
-            if (e.target === modalDetalles) {
-                modalDetalles.style.display = "none";
-            }
-        });
-
-        // Botones para Detalles de Menú
-        document.querySelectorAll(".btn-detalles-menu").forEach(button => {
-            button.addEventListener("click", () => {
-                const menuId = button.dataset.id;
-                const menuNombre = button.dataset.nombre;
-
-                // Solicitar los detalles del menú desde el servidor
-                fetch(`/menu/detalles/${menuId}/`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            openModalDetalles(menuNombre, data.platos);
-                        } else {
-                            alert("Error al obtener detalles del menú: " + data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Error al obtener detalles del menú:", error);
-                        alert("Ocurrió un error al cargar los detalles.");
-                    });
-            });
-        });
-
-        // Finalizar la configuración de los eventos y modales
     });
+
+
+    /** 3. SECCIÓN MENÚS COMBOS **/
+    const modalMenu = document.getElementById("modal-menu");
+    const formMenu = document.getElementById("form-menu");
+    const listaPlatos = document.getElementById("lista-platos");
+    const selectPlatoMenu = document.getElementById("menu-plato-seleccionar");
+    const platosSeleccionadosMap = new Map();
+
+    const actualizarListaPlatosCombo = () => {
+        listaPlatos.innerHTML = "";
+        formMenu.querySelectorAll("input[name='platos']").forEach(el => el.remove());
+
+        platosSeleccionadosMap.forEach((nombre, id) => {
+            const li = document.createElement("li");
+            li.className = "flex items-center justify-between py-1 px-2 bg-white rounded border border-slate-200 text-xs";
+            li.innerHTML = `
+                <span class="font-semibold text-slate-800">${nombre}</span>
+                <button type="button" class="text-rose-500 hover:text-rose-700 font-bold" data-id="${id}">Quitar</button>
+            `;
+            li.querySelector("button").addEventListener("click", () => {
+                platosSeleccionadosMap.delete(id);
+                actualizarListaPlatosCombo();
+            });
+            listaPlatos.appendChild(li);
+
+            const hiddenInput = document.createElement("input");
+            hiddenInput.type = "hidden";
+            hiddenInput.name = "platos";
+            hiddenInput.value = id;
+            formMenu.appendChild(hiddenInput);
+        });
+    };
+
+    document.getElementById("btn-crear-menu").addEventListener("click", () => {
+        formMenu.reset();
+        platosSeleccionadosMap.clear();
+        actualizarListaPlatosCombo();
+        modalMenu.classList.remove("hidden");
+    });
+
+    document.getElementById("cerrar-modal-menu").addEventListener("click", () => modalMenu.classList.add("hidden"));
+    document.getElementById("cancelar-modal-menu").addEventListener("click", () => modalMenu.classList.add("hidden"));
+
+    document.getElementById("agregar-plato-menu").addEventListener("click", () => {
+        const id = selectPlatoMenu.value;
+        const nombre = selectPlatoMenu.options[selectPlatoMenu.selectedIndex]?.text;
+        if (id && !platosSeleccionadosMap.has(id)) {
+            platosSeleccionadosMap.set(id, nombre);
+            actualizarListaPlatosCombo();
+        }
+    });
+
+    formMenu.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (platosSeleccionadosMap.size === 0) {
+            alert("Debes agregar al menos un plato al combo.");
+            return;
+        }
+        const formData = new FormData(formMenu);
+        fetch(formMenu.action, {
+            method: "POST",
+            body: formData,
+            headers: { "X-CSRFToken": csrftoken }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert("Error: " + data.message);
+            }
+        });
+    });
+
+    // Detalles del menú
+    const modalDetalles = document.getElementById("modal-detalles-menu");
+    const listaDetallesPlatos = document.getElementById("lista-detalles-platos");
+    document.querySelectorAll(".btn-detalles-menu").forEach(btn => {
+        btn.addEventListener("click", () => {
+            fetch(`/menu/detalles/${btn.dataset.id}/`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        listaDetallesPlatos.innerHTML = "";
+                        data.platos.forEach(p => {
+                            listaDetallesPlatos.innerHTML += `<li class="py-2 flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-500"></i> ${p.nombre}</li>`;
+                        });
+                        document.getElementById("modal-detalles-titulo").textContent = `Platos en: ${btn.dataset.nombre}`;
+                        if (window.lucide) lucide.createIcons();
+                        modalDetalles.classList.remove("hidden");
+                    }
+                });
+        });
+    });
+    document.getElementById("cerrar-modal-detalles").addEventListener("click", () => modalDetalles.classList.add("hidden"));
+
+
+    /** 4. ELIMINACIÓN DE PLATOS Y MENÚS **/
+    const modalEliminar = document.getElementById("modal-eliminar");
+    const mensajeEliminar = document.getElementById("mensaje-eliminar");
+    let deleteAction = null;
+
+    document.querySelectorAll(".btn-eliminar").forEach(btn => {
+        btn.addEventListener("click", () => {
+            mensajeEliminar.textContent = `¿Seguro que deseas eliminar el plato "${btn.dataset.nombre}"?`;
+            deleteAction = () => {
+                fetch("/plato/eliminar/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+                    body: JSON.stringify({ id: btn.dataset.id })
+                }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); });
+            };
+            modalEliminar.classList.remove("hidden");
+        });
+    });
+
+    document.querySelectorAll(".btn-eliminar-menu").forEach(btn => {
+        btn.addEventListener("click", () => {
+            mensajeEliminar.textContent = `¿Seguro que deseas eliminar el menú combo "${btn.dataset.nombre}"?`;
+            deleteAction = () => {
+                fetch("/menu/eliminar/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
+                    body: JSON.stringify({ id: btn.dataset.id })
+                }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); });
+            };
+            modalEliminar.classList.remove("hidden");
+        });
+    });
+
+    document.getElementById("cancelar-eliminar").addEventListener("click", () => modalEliminar.classList.add("hidden"));
+    document.getElementById("confirmar-eliminar").addEventListener("click", () => {
+        if (deleteAction) deleteAction();
+    });
+
+    if (window.lucide) lucide.createIcons();
+});
 </script>
-
-<style>
-    /* Tablas */
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 20px;
-    }
-
-    table th, table td {
-        border: 1px solid #dddddd;
-        padding: 8px;
-        text-align: left;
-    }
-
-    table th {
-        background-color: #00b2bf;
-        color: white;
-    }
-
-        /* Tablas con scroll */
-    .scrollable-table {
-        max-height: 300px;
-        overflow-y: auto;
-        border: 1px solid #dddddd;
-        background-color: #f9f9f9;
-        margin-top: 20px;
-    }
-
-    .scrollable-table::-webkit-scrollbar {
-        width: 10px;
-    }
-
-    .scrollable-table::-webkit-scrollbar-thumb {
-        background-color: #cccccc;
-        border-radius: 5px;
-    }
-
-    .scrollable-table::-webkit-scrollbar-thumb:hover {
-        background-color: #aaaaaa;
-    }
-    
-    /* Modal */
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        width: 450px;
-        font-family: Arial, sans-serif;
-        box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.2);
-    }
-    
-    .form-group {
-        margin-bottom: 15px;
-    }
-    
-    .form-group label {
-        display: block;
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-    
-    .form-control {
-        width: 100%;
-        padding: 8px;
-        font-size: 14px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        box-sizing: border-box;
-    }
-    
-    #lista-platos {
-        list-style-type: none;
-        padding: 0;
-        margin: 0;
-    }
-    
-    #lista-platos li {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px;
-        border-bottom: 1px solid #ddd;
-    }
-    
-    #lista-platos li:last-child {
-        border-bottom: none;
-    }
-
-    .btn-remove,
-    .btn-eliminar-menu{
-        background-color: red
-        color: white;
-        border: none;
-        padding: 8px 16px; 
-        border-radius: 5px; 
-        font-size: 16px; 
-        font-weight: bold; 
-        text-align: center; 
-        min-width: 100px; 
-        cursor: pointer; 
-        display: inline-block; 
-    }
-
-    .btn-info,
-    .btn-editar{
-        background-color: #17a2b8; /* Celeste (para Editar y Cancelar) o Rojo (para Eliminar) */
-        color: white;
-        border: none;
-        padding: 8px 16px; /* Ajuste igual para todos */
-        border-radius: 5px; /* Bordes redondeados */
-        font-size: 16px; /* Tamaño uniforme del texto */
-        font-weight: bold; /* Resaltar texto */
-        text-align: center; /* Centrado del texto */
-        min-width: 100px; /* Ancho mínimo para garantizar uniformidad */
-        cursor: pointer; /* Manito al pasar el mouse */
-        display: inline-block; /* Asegura consistencia */
-    }
-    
-    .btn-eliminar-menu:hover {
-        background-color: #c82333; /* Rojo más oscuro */
-    }
-    
-    .btn-editar:hover{
-        background-color: #138496; /* Celeste más oscuro */
-    }
-    .btn-secondary:hover {
-        background-color:rgb(84, 84, 84); 
-    }
-    
-</style>
 {% endblock %}

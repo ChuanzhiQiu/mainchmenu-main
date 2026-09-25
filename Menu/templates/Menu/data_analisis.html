@@ -1,335 +1,298 @@
 {% extends 'Menu/base.html' %}
 
 {% block content %}
-<h1>Análisis de Datos</h1>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <!-- Encabezado y Filtro Temporal -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+            <div class="flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider mb-1">
+                <i data-lucide="line-chart" class="w-4 h-4"></i>
+                <span>Business Intelligence & Métricas</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Data Análisis de Ventas</h1>
+            <p class="text-sm text-slate-500 mt-1">Métricas clave, ticket promedio y rendimiento comercial del restaurante.</p>
+        </div>
 
-<!-- Filtro de Fechas -->
-<form method="get">
-    <label for="fecha_inicio">Desde:</label>
-    <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}" required>
-    <label for="fecha_fin">Hasta:</label>
-    <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}" required>
-    <button type="submit" class="btn btn-primary">Aplicar</button>
-</form>
+        <form method="get" class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
+                <label for="fecha_inicio" class="text-xs font-bold text-slate-600">Desde:</label>
+                <input type="date" id="fecha_inicio" name="fecha_inicio" value="{{ fecha_inicio }}" required 
+                       class="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-sky-500">
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="fecha_fin" class="text-xs font-bold text-slate-600">Hasta:</label>
+                <input type="date" id="fecha_fin" name="fecha_fin" value="{{ fecha_fin }}" required 
+                       class="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-sky-500">
+            </div>
+            <button type="submit" class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5">
+                <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+                <span>Aplicar Rango</span>
+            </button>
+        </form>
+    </div>
 
-<!-- Gráficos -->
-<div>
-    {% if ventas_tiempo_labels and ventas_tiempo_data %}
-    <h2>Ventas vs Tiempo</h2>
-    <canvas id="ventasTiempo" style="max-width: 80%; height: 300px; margin: auto;"></canvas>
-    {% else %}
-    <p>No hay datos disponibles para Ventas vs Tiempo.</p>
-    {% endif %}
+    <!-- TARJETAS DE KPIS PRINCIPALES -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- KPI 1: Facturación Total -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Facturado</p>
+                <h3 class="text-2xl font-black text-slate-900 mt-1">${{ total_facturado|floatformat:0 }}</h3>
+                <p class="text-xs text-slate-500 mt-1">Órdenes completadas</p>
+            </div>
+            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold">
+                <i data-lucide="dollar-sign" class="w-6 h-6"></i>
+            </div>
+        </div>
+
+        <!-- KPI 2: Ticket Promedio -->
+        <div class="bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 p-5 rounded-2xl shadow-md flex items-center justify-between">
+            <div>
+                <p class="text-xs font-black uppercase tracking-wider text-amber-950/80">Ticket Promedio</p>
+                <h3 class="text-3xl font-black tracking-tight mt-1 text-slate-950">${{ ticket_promedio|floatformat:0 }}</h3>
+                <p class="text-xs font-semibold text-amber-950/90 mt-1">Gasto medio por cliente</p>
+            </div>
+            <div class="w-12 h-12 bg-white/30 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                <i data-lucide="receipt" class="w-6 h-6 text-slate-950"></i>
+            </div>
+        </div>
+
+        <!-- KPI 3: Pedidos Completados -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Pedidos Completados</p>
+                <h3 class="text-2xl font-black text-slate-900 mt-1">{{ total_ordenes_completadas }}</h3>
+                <p class="text-xs text-slate-500 mt-1">{{ total_ordenes_todas }} órdenes totales</p>
+            </div>
+            <div class="w-12 h-12 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center">
+                <i data-lucide="shopping-bag" class="w-6 h-6"></i>
+            </div>
+        </div>
+
+        <!-- KPI 4: Hora Punta y Plato Estrella -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Hora Punta / Estrella</p>
+                <h3 class="text-lg font-black text-slate-900 mt-1 truncate max-w-[170px]" title="{{ plato_estrella }}">{{ plato_estrella }}</h3>
+                <p class="text-xs font-semibold text-amber-600 mt-1 inline-flex items-center gap-1">
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                    <span>Peak: {{ hora_pico }}</span>
+                </p>
+            </div>
+            <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
+                <i data-lucide="award" class="w-6 h-6"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECCIÓN DE GRÁFICOS PRINCIPALES -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Gráfico 1: Ingresos Diarios -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="trending-up" class="w-4 h-4 text-emerald-600"></i>
+                    <span>Evolución de Ingresos ($)</span>
+                </h2>
+                <span class="text-xs text-slate-400">Por día</span>
+            </div>
+            <div class="h-64">
+                <canvas id="chartIngresos"></canvas>
+            </div>
+        </div>
+
+        <!-- Gráfico 2: Pedidos por Hora (Peak Hours) -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="clock-4" class="w-4 h-4 text-amber-600"></i>
+                    <span>Concentración por Horas Punta</span>
+                </h2>
+                <span class="text-xs text-slate-400">00:00 a 23:00 hrs</span>
+            </div>
+            <div class="h-64">
+                <canvas id="chartHoras"></canvas>
+            </div>
+        </div>
+
+        <!-- Gráfico 3: Top Platos Vendidos -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="utensils" class="w-4 h-4 text-indigo-600"></i>
+                    <span>Top Platos Más Vendidos</span>
+                </h2>
+                <span class="text-xs text-slate-400">Unidades</span>
+            </div>
+            <div class="h-64">
+                <canvas id="chartPlatos"></canvas>
+            </div>
+        </div>
+
+        <!-- Gráficos 4 & 5: Canales y Formas de Pago -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <h2 class="text-sm font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+                    <i data-lucide="credit-card" class="w-4 h-4 text-sky-600"></i>
+                    <span>Métodos de Pago</span>
+                </h2>
+                <div class="h-56">
+                    <canvas id="chartPagos"></canvas>
+                </div>
+            </div>
+            <div>
+                <h2 class="text-sm font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+                    <i data-lucide="truck" class="w-4 h-4 text-amber-600"></i>
+                    <span>Canales de Venta</span>
+                </h2>
+                <div class="h-56">
+                    <canvas id="chartCanales"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div>
-    {% if ingresos_tiempo_labels and ingresos_tiempo_data %}
-    <h2>Ingresos vs Tiempo</h2>
-    <canvas id="ingresosTiempo" style="max-width: 80%; height: 300px; margin: auto;"></canvas>
-    {% else %}
-    <p>No hay datos disponibles para Ingresos vs Tiempo.</p>
-    {% endif %}
-</div>
-
-
-<div>
-    <h2>Histograma de Platos Vendidos</h2>
-    <canvas id="platosVendidos" style="max-width: 60%; height: 300px; margin: auto;"></canvas>
-</div>
-
-<div>
-    <h2>Gráfico de Torta - Tipo de Pago</h2>
-    <canvas id="tiposPago" style="max-width: 40%; height: 300px; margin: auto;"></canvas>
-</div>
-
-<div>
-    <h2>Gráfico de Torta - Canal de Venta</h2>
-    <canvas id="canalesVenta" style="max-width: 40%; height: 300px; margin: auto;"></canvas>
-</div>
-
+<!-- Chart.js CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Obtener elementos del DOM para todos los gráficos
-        const ventasTiempoLabelsEl = document.getElementById('ventas_tiempo_labels');
-        const ventasTiempoDataEl = document.getElementById('ventas_tiempo_data');
-        const ingresosTiempoLabelsEl = document.getElementById('ingresos_tiempo_labels');
-        const ingresosTiempoDataEl = document.getElementById('ingresos_tiempo_data');
-        const platosLabelsEl = document.getElementById('platos_labels');
-        const platosDataEl = document.getElementById('platos_data');
-        const tiposPagoLabelsEl = document.getElementById('tipos_pago_labels');
-        const tiposPagoDataEl = document.getElementById('tipos_pago_data');
-        const canalesVentaLabelsEl = document.getElementById('canales_venta_labels');
-        const canalesVentaDataEl = document.getElementById('canales_venta_data');
+document.addEventListener("DOMContentLoaded", () => {
+    // Datos parseados desde Django context
+    const ingresosLabels = {{ ingresos_tiempo_labels|safe }};
+    const ingresosData = {{ ingresos_tiempo_data|safe }};
+    const horasLabels = {{ horas_labels|safe }};
+    const horasData = {{ horas_data|safe }};
+    const platosLabels = {{ platos_labels|safe }};
+    const platosData = {{ platos_data|safe }};
+    const pagosLabels = {{ tipos_pago_labels|safe }};
+    const pagosData = {{ tipos_pago_data|safe }};
+    const canalesLabels = {{ canales_venta_labels|safe }};
+    const canalesData = {{ canales_venta_data|safe }};
 
-        // Función para generar un gráfico de líneas
-        function crearGraficoLineas(elementId, labels, data, label, borderColor) {
-            const canvas = document.getElementById(elementId);
-            if (!canvas) {
-                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
-                return;
-            }
-            new Chart(canvas.getContext('2d'), {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        borderColor: borderColor,
-                        fill: false,
-                    }],
-                },
-            });
-        }
-
-        // Función para generar un gráfico de barras
-        function crearGraficoBarras(elementId, labels, data, label, backgroundColor) {
-            const canvas = document.getElementById(elementId);
-            if (!canvas) {
-                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
-                return;
-            }
-            new Chart(canvas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        backgroundColor: backgroundColor,
-                    }],
-                },
-            });
-        }
-
-        // Función para generar un gráfico de torta
-        function crearGraficoTortaConPorcentajes(elementId, labels, data) {
-            const canvas = document.getElementById(elementId);
-            if (!canvas) {
-                console.error(`El elemento con ID "${elementId}" no existe en el DOM.`);
-                return;
-            }
-        
-            // Colores predefinidos para evitar repetición
-            const predefinedColors = [
-                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#66FF66', '#FF6666',
-                '#6666FF', '#FF66CC', '#FFCC66', '#66CCCC', '#CCCC66', '#CC66FF'
-            ];
-            const backgroundColors = labels.map((_, index) => predefinedColors[index % predefinedColors.length]);
-        
-            // Crear el gráfico de torta
-            new Chart(canvas.getContext('2d'), {
-                type: 'pie',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        backgroundColor: backgroundColors,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: true, // Mantener proporción adecuada
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'right', // Coloca la leyenda a la derecha
-                            labels: {
-                                boxWidth: 10, // Tamaño de la caja de color
-                                padding: 10, // Espaciado entre etiquetas
-                            },
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function (context) {
-                                    const total = context.dataset.data.reduce((sum, value) => sum + value, 0);
-                                    const value = context.raw;
-                                    const percentage = ((value / total) * 100).toFixed(2);
-                                    return `${context.label}: ${value} (${percentage}%)`;
-                                },
-                            },
-                        },
-                        datalabels: {
-                            formatter: (value, context) => {
-                                const total = context.dataset.data.reduce((sum, value) => sum + value, 0);
-                                const percentage = ((value / total) * 100).toFixed(2);
-                                return `${percentage}%`;
-                            },
-                            color: '#fff', // Texto blanco en los segmentos
-                            anchor: 'center',
-                        },
-                    },
-                },
-            });
-        }
-
-        // Procesar y generar el gráfico "Ventas vs Tiempo"
-        if (ventasTiempoLabelsEl && ventasTiempoDataEl) {
-            try {
-                const ventasTiempoLabels = JSON.parse(ventasTiempoLabelsEl.textContent || '[]');
-                const ventasTiempoData = JSON.parse(ventasTiempoDataEl.textContent || '[]');
-
-                if (ventasTiempoLabels.length > 0 && ventasTiempoData.length > 0) {
-                    crearGraficoLineas('ventasTiempo', ventasTiempoLabels, ventasTiempoData, 'Ventas', 'rgba(75, 192, 192, 1)');
-                } else {
-                    console.warn("Datos vacíos para Ventas vs Tiempo.");
-                }
-            } catch (error) {
-                console.error("Error al procesar los datos de Ventas vs Tiempo:", error);
-            }
-        }
-
-        // Procesar y generar el gráfico "Ingresos vs Tiempo"
-        if (ingresosTiempoLabelsEl && ingresosTiempoDataEl) {
-            try {
-                const ingresosTiempoLabels = JSON.parse(ingresosTiempoLabelsEl.textContent || '[]');
-                const ingresosTiempoData = JSON.parse(ingresosTiempoDataEl.textContent || '[]');
-
-                if (ingresosTiempoLabels.length > 0 && ingresosTiempoData.length > 0) {
-                    crearGraficoLineas('ingresosTiempo', ingresosTiempoLabels, ingresosTiempoData, 'Ingresos', 'rgba(255, 99, 132, 1)');
-                } else {
-                    console.warn("Datos vacíos para Ingresos vs Tiempo.");
-                }
-            } catch (error) {
-                console.error("Error al procesar los datos de Ingresos vs Tiempo:", error);
-            }
-        }
-
-        // Procesar y generar el histograma "Platos Vendidos"
-        if (platosLabelsEl && platosDataEl) {
-            try {
-                const platosLabels = JSON.parse(platosLabelsEl.textContent || '[]');
-                const platosData = JSON.parse(platosDataEl.textContent || '[]');
-
-                if (platosLabels.length > 0 && platosData.length > 0) {
-                    // Generar colores únicos para cada barra
-                    const backgroundColors = platosLabels.map(() => {
-                        return `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`;
-                    });
-
-                    // Crear el gráfico de barras
-                    const canvas = document.getElementById('platosVendidos');
-                    if (canvas) {
-                        new Chart(canvas.getContext('2d'), {
-                            type: 'bar',
-                            data: {
-                                labels: platosLabels, 
-                                datasets: [{
-                                    data: platosData, 
-                                    backgroundColor: backgroundColors, 
-                                }],
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: true,
-                                plugins: {
-                                    legend: {
-                                        display: false, 
-                                    },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function (context) {
-                                                return `${context.label}: ${context.raw}`;
-                                            },
-                                        },
-                                    },
-                                },
-                                scales: {
-                                    x: {
-                                        ticks: {
-                                            autoSkip: false, // Mostrar todas las etiquetas
-                                            maxRotation: 45, // Rotación máxima para evitar solapamiento
-                                            minRotation: 0, // Sin rotación si no es necesario
-                                        },
-                                    },
-                                    y: {
-                                        beginAtZero: true, // Asegurar que el eje Y empieza en 0
-                                        ticks: {
-                                            stepSize: 1, // Escalado uniforme para las cantidades
-                                        },
-                                    },
-                                },
-                            },
-                        });
+    // 1. Gráfico Ingresos Diarios (Line)
+    const ctxIngresos = document.getElementById('chartIngresos');
+    if (ctxIngresos && ingresosLabels.length > 0) {
+        new Chart(ctxIngresos, {
+            type: 'line',
+            data: {
+                labels: ingresosLabels,
+                datasets: [{
+                    label: 'Ingresos ($)',
+                    data: ingresosData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointBackgroundColor: '#10b981'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: v => '$' + v.toLocaleString() }
                     }
-                } else {
-                    console.warn("Datos vacíos para Platos Vendidos.");
                 }
-            } catch (error) {
-                console.error("Error al procesar los datos de Platos Vendidos:", error);
             }
-        }
+        });
+    }
 
-
-        // Procesar y generar el gráfico de torta "Tipos de Pago"
-        if (tiposPagoLabelsEl && tiposPagoDataEl) {
-            try {
-                const tiposPagoLabels = JSON.parse(tiposPagoLabelsEl.textContent || '[]');
-                const tiposPagoData = JSON.parse(tiposPagoDataEl.textContent || '[]');
-
-                if (tiposPagoLabels.length > 0 && tiposPagoData.length > 0) {
-                    crearGraficoTortaConPorcentajes('tiposPago', tiposPagoLabels, tiposPagoData);
-                } else {
-                    console.warn("Datos vacíos para Tipos de Pago.");
-                }
-            } catch (error) {
-                console.error("Error al procesar los datos de Tipos de Pago:", error);
+    // 2. Gráfico Horas Punta (Bar)
+    const ctxHoras = document.getElementById('chartHoras');
+    if (ctxHoras) {
+        new Chart(ctxHoras, {
+            type: 'bar',
+            data: {
+                labels: horasLabels,
+                datasets: [{
+                    label: 'Pedidos',
+                    data: horasData,
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
-        }
+        });
+    }
 
-        // Procesar y generar el gráfico de torta "Canales de Venta"
-        if (canalesVentaLabelsEl && canalesVentaDataEl) {
-            try {
-                const canalesVentaLabels = JSON.parse(canalesVentaLabelsEl.textContent || '[]');
-                const canalesVentaData = JSON.parse(canalesVentaDataEl.textContent || '[]');
-
-                if (canalesVentaLabels.length > 0 && canalesVentaData.length > 0) {
-                    crearGraficoTortaConPorcentajes('canalesVenta', canalesVentaLabels, canalesVentaData);
-                } else {
-                    console.warn("Datos vacíos para Canales de Venta.");
-                }
-            } catch (error) {
-                console.error("Error al procesar los datos de Canales de Venta:", error);
+    // 3. Gráfico Top Platos (Bar horizontal)
+    const ctxPlatos = document.getElementById('chartPlatos');
+    if (ctxPlatos) {
+        new Chart(ctxPlatos, {
+            type: 'bar',
+            data: {
+                labels: platosLabels,
+                datasets: [{
+                    label: 'Unidades Vendidas',
+                    data: platosData,
+                    backgroundColor: '#6366f1',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
-        }
-    });
-</script>
+        });
+    }
 
+    // 4. Gráfico Métodos de Pago (Doughnut)
+    const ctxPagos = document.getElementById('chartPagos');
+    if (ctxPagos) {
+        new Chart(ctxPagos, {
+            type: 'doughnut',
+            data: {
+                labels: pagosLabels.length ? pagosLabels : ['Sin datos'],
+                datasets: [{
+                    data: pagosData.length ? pagosData : [1],
+                    backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#8b5cf6', '#94a3b8']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
 
+    // 5. Gráfico Canales de Venta (Doughnut)
+    const ctxCanales = document.getElementById('chartCanales');
+    if (ctxCanales) {
+        new Chart(ctxCanales, {
+            type: 'doughnut',
+            data: {
+                labels: canalesLabels.length ? canalesLabels : ['Sin datos'],
+                datasets: [{
+                    data: canalesData.length ? canalesData : [1],
+                    backgroundColor: ['#f59e0b', '#3b82f6', '#ec4899', '#14b8a6']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
 
-<script type="application/json" id="ventas_tiempo_labels">
-    {{ ventas_tiempo_labels|safe }}
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+});
 </script>
-<script type="application/json" id="ventas_tiempo_data">
-    {{ ventas_tiempo_data|safe }}
-</script>
-<script type="application/json" id="ingresos_tiempo_labels">
-    {{ ingresos_tiempo_labels|safe }}
-</script>
-<script type="application/json" id="ingresos_tiempo_data">
-    {{ ingresos_tiempo_data|safe }}
-</script>
-<script type="application/json" id="platos_labels">
-    {{ platos_labels|safe }}
-</script>
-<script type="application/json" id="platos_data">
-    {{ platos_data|safe }}
-</script>
-<script type="application/json" id="tipos_pago_labels">
-    {{ tipos_pago_labels|safe }}
-</script>
-<script type="application/json" id="tipos_pago_data">
-    {{ tipos_pago_data|safe }}
-</script>
-<script type="application/json" id="canales_venta_labels">
-    {{ canales_venta_labels|safe }}
-</script>
-<script type="application/json" id="canales_venta_data">
-    {{ canales_venta_data|safe }}
-</script>
-
-
-
 {% endblock %}

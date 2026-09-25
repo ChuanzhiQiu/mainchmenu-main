@@ -22,6 +22,15 @@ urlpatterns = [
     path("pedidos/<int:id>/ticket/", views.ticket_orden, name="ticket_orden"),
     path("orden/<int:id>/ticket/", views.ticket_orden, name="orden_ticket"),
 
+    # Rutas de Autenticación Admin
+    path("login/", views.login_view, name="login"),
+    path("logout/", views.logout_view, name="logout"),
+
+    # Rutas de Gestión de Recetas / Escandallos (Dueño)
+    path("plato/<int:plato_id>/receta/", views.obtener_receta_plato, name="obtener_receta_plato"),
+    path("plato/<int:plato_id>/receta/guardar/", views.guardar_ingrediente_receta, name="guardar_ingrediente_receta"),
+    path("receta/item/<int:item_id>/eliminar/", views.eliminar_ingrediente_receta, name="eliminar_ingrediente_receta"),
+
     # Rutas CRUD y Analítica
     path("crud/", views.crud, name="crud"),
     path('plato/guardar/', views.guardar_plato, name='guardar_plato'),

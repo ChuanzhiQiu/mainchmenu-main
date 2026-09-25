@@ -17,7 +17,81 @@ from django.db.models.functions import TruncDay
 from collections import Counter
 from Menu.services.inventory_service import descontar_stock_orden
 
+from django.contrib.auth import authenticate, login, logout
+from functools import wraps
+from django.db.models.functions import ExtractHour
+
 logger = logging.getLogger(__name__)
+
+
+def admin_required(view_func):
+    """
+    Decorador estricto para proteger operaciones de administración e inventario.
+    Limita al usuario de caja:
+    - Si el usuario no está autenticado o no es staff/superuser:
+      - Si es petición JSON/AJAX: responde con 403 Forbidden.
+      - Si es petición web estándar: redirige a la pantalla de login (/login/) con mensaje.
+    """
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        is_ajax = (
+            request.headers.get("x-requested-with") == "XMLHttpRequest"
+            or request.headers.get("HX-Request") == "true"
+            or request.content_type == "application/json"
+            or "application/json" in request.headers.get("Accept", "")
+        )
+        if not request.user.is_authenticated or not request.user.is_staff:
+            if is_ajax:
+                return JsonResponse({
+                    "success": False,
+                    "error": "Acceso restringido. Solo el administrador puede realizar esta acción.",
+                    "message": "Acceso restringido. Solo el administrador puede realizar esta acción."
+                }, status=403)
+            messages.warning(request, "Acceso restringido a administradores. Inicia sesión para continuar.")
+            return redirect(f"/login/?next={request.path}")
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
+
+
+# --------------------------------- AUTENTICACIÓN ADMIN ---------------------------------
+
+def login_view(request):
+    """Vista visual de loggeo para el dueño / administrador."""
+    next_url = request.GET.get('next') or request.POST.get('next') or 'Menu:crud'
+    error = None
+
+    if request.user.is_authenticated and request.user.is_staff:
+        return redirect(next_url)
+
+    if request.method == "POST":
+        usuario = request.POST.get("username", "").strip()
+        clave = request.POST.get("password", "").strip()
+
+        user = authenticate(request, username=usuario, password=clave)
+        if user is not None:
+            if user.is_staff or user.is_superuser:
+                login(request, user)
+                messages.success(request, f"¡Bienvenido(a) Administrador(a) {user.username}!")
+                return redirect(next_url)
+            else:
+                error = "El usuario ingresado no cuenta con privilegios de Administrador."
+        else:
+            error = "Usuario o contraseña incorrectos. Verifica tus credenciales."
+
+    return render(request, "Menu/login.html", {
+        "error": error,
+        "next_url": next_url,
+        "username": request.POST.get("username", "")
+    })
+
+
+def logout_view(request):
+    """Cierra la sesión de administrador y vuelve a la terminal de caja."""
+    if request.user.is_authenticated:
+        logout(request)
+        messages.info(request, "Sesión de administrador cerrada. Terminal operando en Modo Caja.")
+    return redirect("Menu:inicio")
+
 
 
 # ---------------------------------   INICIO  -----------------------------------------------
@@ -516,13 +590,121 @@ def crear_orden(request):
         "tipos_pago": tipos_pago,
     })
 
+# -------------------- GESTIÓN DE RECETAS / ESCANDALLO (DUEÑO) --------------------
+
+@admin_required
+def obtener_receta_plato(request, plato_id):
+    """Devuelve los insumos asociados al plato (escandallo), su costo unitario y subtotal."""
+    plato = get_object_or_404(Plato, id=plato_id)
+    items = RecetaItem.objects.filter(plato=plato).select_related('insumo')
+    
+    costo_total = Decimal("0.0")
+    items_data = []
+    for item in items:
+        costo_item = item.cantidad * (item.insumo.costo_unitario or Decimal("0.0"))
+        costo_total += costo_item
+        items_data.append({
+            "id": item.id,
+            "insumo_id": item.insumo.id,
+            "insumo_nombre": item.insumo.nombre,
+            "insumo_codigo": item.insumo.codigo,
+            "unidad": item.insumo.unidad_medida,
+            "cantidad": float(item.cantidad),
+            "costo_unitario": float(item.insumo.costo_unitario),
+            "costo_subtotal": float(costo_item)
+        })
+
+    todos_insumos = Insumo.objects.filter(activo=True).order_by('nombre')
+    insumos_disponibles = [
+        {"id": ins.id, "nombre": ins.nombre, "codigo": ins.codigo, "unidad": ins.unidad_medida, "costo": float(ins.costo_unitario)}
+        for ins in todos_insumos
+    ]
+
+    margen_bruto = float(plato.valor) - float(costo_total)
+    porcentaje_margen = (margen_bruto / float(plato.valor) * 100) if plato.valor > 0 else 0.0
+
+    return JsonResponse({
+        "success": True,
+        "plato": {
+            "id": plato.id,
+            "nombre": plato.nombre,
+            "valor": float(plato.valor),
+            "costo_total": float(costo_total),
+            "margen_bruto": round(margen_bruto, 2),
+            "porcentaje_margen": round(porcentaje_margen, 1)
+        },
+        "items": items_data,
+        "insumos_disponibles": insumos_disponibles
+    })
+
+
+@admin_required
+def guardar_ingrediente_receta(request, plato_id):
+    """Crea o actualiza la cantidad de un insumo dentro de la receta de un plato."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
+
+    try:
+        data = json.loads(request.body) if request.body and request.content_type == "application/json" else request.POST
+        plato = get_object_or_404(Plato, id=plato_id)
+        insumo_id = data.get("insumo_id")
+        cantidad_raw = data.get("cantidad")
+
+        if not insumo_id or cantidad_raw is None:
+            return JsonResponse({"success": False, "message": "Insumo y cantidad son requeridos."}, status=400)
+
+        cantidad = Decimal(str(cantidad_raw))
+        if cantidad <= Decimal("0.0"):
+            return JsonResponse({"success": False, "message": "La cantidad requerida debe ser estrictamente mayor a 0."}, status=400)
+
+        insumo = get_object_or_404(Insumo, id=insumo_id)
+
+        item, created = RecetaItem.objects.update_or_create(
+            plato=plato,
+            insumo=insumo,
+            defaults={"cantidad": cantidad}
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": f"Ingrediente '{insumo.nombre}' {'agregado' if created else 'actualizado'} en la receta."
+        })
+    except (ValueError, InvalidOperation):
+        return JsonResponse({"success": False, "message": "Cantidad inválida. Ingrese un número válido."}, status=400)
+    except Exception as e:
+        logger.exception("Error guardando ingrediente en receta: %s", e)
+        return JsonResponse({"success": False, "message": f"Error: {str(e)}"}, status=500)
+
+
+@admin_required
+def eliminar_ingrediente_receta(request, item_id):
+    """Elimina un insumo del escandallo / receta de un plato."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
+
+    item = get_object_or_404(RecetaItem, id=item_id)
+    insumo_nombre = item.insumo.nombre
+    item.delete()
+    return JsonResponse({
+        "success": True,
+        "message": f"Ingrediente '{insumo_nombre}' eliminado de la receta."
+    })
+
+
 # -------------------- EDICION CRUD ----------------------------
 
+@admin_required
 def crud(request):
-    platos = Plato.objects.all().order_by('id')#[:10]  # Limitar a los primeros 10 platos
-    menus = Menu.objects.all().order_by('id')#[:5]  # Limitar a los primeros 5 menús
-    return render(request, "Menu/crud.html", {"platos": platos, "menus": menus})
+    platos = Plato.objects.all().order_by('id')
+    menus = Menu.objects.all().order_by('id')
+    insumos = Insumo.objects.filter(activo=True).order_by('nombre')
+    return render(request, "Menu/crud.html", {
+        "platos": platos, 
+        "menus": menus,
+        "insumos": insumos
+    })
 
+@admin_required
 def guardar_plato(request):
     if request.method == 'POST':
         plato_id = request.POST.get('id')
@@ -546,6 +728,7 @@ def guardar_plato(request):
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
 
+@admin_required
 def eliminar_plato(request):
     if request.method == 'POST':
         data = json.loads(request.body)
@@ -560,49 +743,42 @@ def eliminar_plato(request):
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
 
+@admin_required
 def guardar_menu(request):
     if request.method == 'POST':
         menu_id = request.POST.get('id')
         nombre = request.POST.get('nombre')
         precio = request.POST.get('precio_menus')
-        platos_ids = request.POST.getlist('platos')  # Obtener lista directamente del formulario
+        platos_ids = request.POST.getlist('platos')
 
         if not nombre or not precio:
             return JsonResponse({'success': False, 'message': 'Nombre y precio son obligatorios.'})
 
         try:
-            # Asegurarse de que los IDs de los platos sean números enteros
             platos_ids = [int(plato_id) for plato_id in platos_ids if plato_id.isdigit()]
 
             if not platos_ids:
                 return JsonResponse({'success': False, 'message': 'Debe seleccionar al menos un plato.'})
 
             if menu_id:
-                # Editar menú existente
                 menu = get_object_or_404(Menu, id=menu_id)
                 menu.nombre = nombre
                 menu.precio_menus = precio
                 menu.save()
 
-                # Actualizar platos asociados
                 menu.platos.clear()
                 for plato_id in platos_ids:
                     plato = get_object_or_404(Plato, id=plato_id)
                     menu.platos.add(plato)
 
-                # Validar después de asignar los platos
                 menu.full_clean()
                 return JsonResponse({'success': True, 'message': 'Menú editado exitosamente.'})
             else:
-                # Crear nuevo menú
                 nuevo_menu = Menu.objects.create(nombre=nombre, precio_menus=precio)
-
-                # Agregar platos asociados después de guardar el menú
                 for plato_id in platos_ids:
                     plato = get_object_or_404(Plato, id=plato_id)
                     nuevo_menu.platos.add(plato)
 
-                # Validar después de asignar los platos
                 nuevo_menu.full_clean()
                 return JsonResponse({'success': True, 'message': 'Menú creado exitosamente.'})
 
@@ -613,6 +789,7 @@ def guardar_menu(request):
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
 
+@admin_required
 def eliminar_menu(request):
     if request.method == 'POST':
         try:
@@ -638,100 +815,162 @@ def detalles_menu(request, id):
         return JsonResponse({"success": True, "platos": platos})
     return JsonResponse({"success": False, "message": "Método no permitido."})
 
-# -------------------- ANALISIS -----------------
+# -------------------- ANALISIS (DUEÑO / ADMIN) -----------------
 
+@admin_required
 def data_analisis(request):
-    fecha_inicio = request.GET.get('fecha_inicio')
-    fecha_fin = request.GET.get('fecha_fin')
+    """
+    Panel Ejecutivo y Analítica Avanzada de Restaurante:
+    - Restringido a Administradores (RBAC).
+    - Métricas clave: Ticket Promedio, Total Facturado, Total Pedidos, Descuentos Totales.
+    - Desglose por Horas Punta (Peak Hours), Top Platos por Ventas y Margen.
+    - Distribución por Métodos de Pago y Canales de Venta.
+    - Tendencias temporales de facturación e ingresos.
+    """
+    fecha_inicio_param = request.GET.get('fecha_inicio')
+    fecha_fin_param = request.GET.get('fecha_fin')
 
     try:
-        if not fecha_inicio or not fecha_fin:
-            fecha_fin = datetime.now()
+        if not fecha_inicio_param or not fecha_fin_param:
+            fecha_fin = timezone.localdate()
             fecha_inicio = fecha_fin - timedelta(days=30)
         else:
-            fecha_inicio = datetime.strptime(fecha_inicio, '%Y-%m-%d')
-            fecha_fin = datetime.strptime(fecha_fin, '%Y-%m-%d')
+            fecha_inicio = datetime.strptime(fecha_inicio_param, '%Y-%m-%d').date()
+            fecha_fin = datetime.strptime(fecha_fin_param, '%Y-%m-%d').date()
 
-        # Validar rango de fechas
         if fecha_inicio > fecha_fin:
-            raise ValueError("La fecha de inicio no puede ser mayor que la fecha de fin.")
-        
-        ordenes = Orden.objects.filter(fecha__range=[fecha_inicio, fecha_fin])
+            messages.error(request, "La fecha de inicio no puede ser posterior a la fecha final.")
+            fecha_inicio = fecha_fin - timedelta(days=30)
 
-        # Ventas vs Tiempo
+        # Filtro de órdenes en rango (Para ventas reales consideramos órdenes no eliminadas)
+        ordenes_base = Orden.objects.filter(fecha__range=[fecha_inicio, fecha_fin])
+        ordenes_completadas = ordenes_base.filter(estado=Orden.ESTADO_COMPLETADA)
+
+        # 1. KPIs Principales
+        total_ordenes_completadas = ordenes_completadas.count()
+        total_ordenes_todas = ordenes_base.count()
+        ordenes_canceladas_count = ordenes_base.filter(estado=Orden.ESTADO_ELIMINADA).count()
+
+        facturacion_agg = ordenes_completadas.aggregate(
+            total_facturado=Sum("monto_total"),
+            total_descuentos=Sum("descuento")
+        )
+        total_facturado = float(facturacion_agg["total_facturado"] or 0.0)
+        total_descuentos = float(facturacion_agg["total_descuentos"] or 0.0)
+
+        # Ticket Promedio
+        ticket_promedio = (total_facturado / total_ordenes_completadas) if total_ordenes_completadas > 0 else 0.0
+
+        # 2. Ventas e Ingresos vs Tiempo (Diario)
         ventas_tiempo = (
-            ordenes.annotate(fecha_dia=TruncDay('fecha'))
+            ordenes_completadas.annotate(fecha_dia=TruncDay('fecha'))
             .values("fecha_dia")
-            .annotate(total_ventas=Count("id"))
+            .annotate(
+                total_ventas=Count("id"),
+                total_ingresos=Sum("monto_total")
+            )
             .order_by("fecha_dia")
         )
 
-        # Ingresos vs Tiempo
-        ingresos_tiempo = (
-            ordenes.annotate(fecha_dia=TruncDay('fecha'))
-            .values("fecha_dia")
-            .annotate(total_ingresos=Sum("monto_total"))
-            .order_by("fecha_dia")
-        )
+        ventas_tiempo_labels = [dato['fecha_dia'].strftime('%Y-%m-%d') if hasattr(dato['fecha_dia'], 'strftime') else str(dato['fecha_dia']) for dato in ventas_tiempo]
+        ventas_tiempo_data = [dato['total_ventas'] for dato in ventas_tiempo]
+        ingresos_tiempo_labels = ventas_tiempo_labels
+        ingresos_tiempo_data = [float(dato['total_ingresos'] or 0.0) for dato in ventas_tiempo]
 
-        # Histograma de Platos Vendidos
-        platos_vendidos = (
-            OrdenItem.objects.filter(orden__fecha__range=[fecha_inicio, fecha_fin])
-            .values("plato__nombre")
-            .annotate(cantidad=Sum("cantidad"))
+        # 3. Top Platos Vendidos
+        platos_vendidos_qs = (
+            OrdenItem.objects.filter(
+                orden__in=ordenes_completadas,
+                plato__isnull=False
+            )
+            .values("plato__nombre", "plato__valor")
+            .annotate(
+                cantidad=Sum("cantidad")
+            )
+            .order_by("-cantidad")[:10]
+        )
+        platos_labels = [p['plato__nombre'] for p in platos_vendidos_qs]
+        platos_data = [p['cantidad'] for p in platos_vendidos_qs]
+        plato_estrella = platos_labels[0] if platos_labels else "Sin ventas aún"
+
+        # 4. Horas Punta de Venta (Peak Hours: 00:00 a 23:00)
+        horas_dict = {h: 0 for h in range(24)}
+        for hora_val in ordenes_completadas.values_list("hora", flat=True):
+            if hora_val:
+                horas_dict[hora_val.hour] += 1
+        
+        horas_labels = [f"{h:02d}:00" for h in range(24)]
+        horas_data = [horas_dict[h] for h in range(24)]
+        hora_pico_val = max(horas_dict, key=horas_dict.get) if any(horas_dict.values()) else None
+        hora_pico = f"{hora_pico_val:02d}:00 - {hora_pico_val+1:02d}:00" if hora_pico_val is not None and horas_dict[hora_pico_val] > 0 else "N/A"
+
+        # 5. Métodos de Pago
+        tipos_pago = (
+            ordenes_completadas.values("tipo_pago")
+            .annotate(cantidad=Count("id"), total=Sum("monto_total"))
             .order_by("-cantidad")
         )
-
-        # Datos para gráfico de torta - Tipo de Pago
-        tipos_pago = (
-            ordenes.values("tipo_pago")
-            .annotate(cantidad=Count("id"))
-        )
-
-        # Datos para gráfico de torta - Canal de Venta
-        canales_venta = (
-            ordenes.values("canal_venta")
-            .annotate(cantidad=Count("id"))
-        )
-
-        # Preparar datos para gráficos
-        ventas_tiempo_labels = [str(dato['fecha_dia']) for dato in ventas_tiempo]
-        ventas_tiempo_data = [dato['total_ventas'] for dato in ventas_tiempo]
-        ingresos_tiempo_labels = [str(dato['fecha_dia']) for dato in ingresos_tiempo]
-        ingresos_tiempo_data = [dato['total_ingresos'] for dato in ingresos_tiempo]
-
-        # Preparar datos para histograma y tortas
-        platos_labels = [dato['plato__nombre'] for dato in platos_vendidos]
-        platos_data = [dato['cantidad'] for dato in platos_vendidos]
-        tipos_pago_labels = [dato['tipo_pago'] for dato in tipos_pago]
+        tipos_pago_labels = [dato['tipo_pago'] or 'No especificado' for dato in tipos_pago]
         tipos_pago_data = [dato['cantidad'] for dato in tipos_pago]
-        canales_venta_labels = [dato['canal_venta'] for dato in canales_venta]
+
+        # 6. Canales de Venta
+        canales_venta = (
+            ordenes_completadas.values("canal_venta")
+            .annotate(cantidad=Count("id"), total=Sum("monto_total"))
+            .order_by("-cantidad")
+        )
+        canales_venta_labels = [dato['canal_venta'] or 'Local' for dato in canales_venta]
         canales_venta_data = [dato['cantidad'] for dato in canales_venta]
 
     except Exception as e:
-        print(f"Error al procesar los datos: {e}")
+        logger.exception("Error procesando datos para data_analisis: %s", e)
+        total_facturado = 0.0
+        total_ordenes_completadas = 0
+        total_ordenes_todas = 0
+        ordenes_canceladas_count = 0
+        ticket_promedio = 0.0
+        total_descuentos = 0.0
+        plato_estrella = "N/A"
+        hora_pico = "N/A"
         ventas_tiempo_labels = []
         ventas_tiempo_data = []
         ingresos_tiempo_labels = []
         ingresos_tiempo_data = []
         platos_labels = []
         platos_data = []
+        horas_labels = []
+        horas_data = []
         tipos_pago_labels = []
         tipos_pago_data = []
         canales_venta_labels = []
         canales_venta_data = []
 
     context = {
+        # KPIs Numéricos
+        "total_facturado": total_facturado,
+        "total_ordenes_completadas": total_ordenes_completadas,
+        "total_ordenes_todas": total_ordenes_todas,
+        "ordenes_canceladas_count": ordenes_canceladas_count,
+        "ticket_promedio": round(ticket_promedio, 2),
+        "total_descuentos": total_descuentos,
+        "plato_estrella": plato_estrella,
+        "hora_pico": hora_pico,
+
+        # Gráficos JSON
         "ventas_tiempo_labels": json.dumps(ventas_tiempo_labels),
         "ventas_tiempo_data": json.dumps(ventas_tiempo_data),
         "ingresos_tiempo_labels": json.dumps(ingresos_tiempo_labels),
         "ingresos_tiempo_data": json.dumps(ingresos_tiempo_data),
         "platos_labels": json.dumps(platos_labels),
         "platos_data": json.dumps(platos_data),
+        "horas_labels": json.dumps(horas_labels),
+        "horas_data": json.dumps(horas_data),
         "tipos_pago_labels": json.dumps(tipos_pago_labels),
         "tipos_pago_data": json.dumps(tipos_pago_data),
         "canales_venta_labels": json.dumps(canales_venta_labels),
         "canales_venta_data": json.dumps(canales_venta_data),
+
+        # Rango
         "fecha_inicio": fecha_inicio.strftime('%Y-%m-%d') if fecha_inicio else '',
         "fecha_fin": fecha_fin.strftime('%Y-%m-%d') if fecha_fin else '',
     }
@@ -799,6 +1038,7 @@ ticket_comanda = ticket_orden
 
 # -------------------- INVENTARIO Y ALERTAS (F18) ----------------------------
 
+@admin_required
 def inventario_view(request):
     """
     Panel de Control de Inventario y Alertas (F18):
@@ -873,6 +1113,7 @@ def inventario_view(request):
     return render(request, "Menu/inventario.html", context)
 
 
+@admin_required
 def ajustar_stock_view(request):
     """
     Endpoint transaccional para procesar ajustes manuales de stock (F18):

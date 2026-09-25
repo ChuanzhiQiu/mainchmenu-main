@@ -561,3 +561,117 @@ class AIForecastingAndGuardrailsTests(TestCase):
         # POST no permitido -> 405
         resp_post = self.client.post("/api/sugerencias-compra/", data={})
         self.assertEqual(resp_post.status_code, 405)
+
+
+from django.contrib.auth.models import User
+
+class AdminRoleAndRecipeAnalyticsTests(TestCase):
+    """
+    Tests de seguridad RBAC para separar Admin vs Cajero, 
+    editor de escandallo/recetas y cálculo de métricas financieras (Ticket Promedio).
+    """
+
+    def setUp(self):
+        self.client = Client()
+        # Admin / Dueño
+        self.admin_user = User.objects.create_superuser(username="admin_test", password="password123", email="admin@test.cl")
+        # Cajero (sin staff)
+        self.cajero_user = User.objects.create_user(username="cajero_test", password="password123")
+
+        self.insumo_tomate = Insumo.objects.create(
+            codigo="INS-TOM-01",
+            nombre="Tomate Granel",
+            unidad_medida="kg",
+            stock_actual=Decimal("10.000"),
+            stock_minimo=Decimal("2.000"),
+            costo_unitario=Decimal("1200.000")
+        )
+        self.plato = Plato.objects.create(nombre="Ensalada Chilena", valor=4500.0)
+
+    def test_cajero_blocked_from_admin_views(self):
+        """El perfil de caja no puede entrar a /crud/, /inventario/ ni /data_analisis/."""
+        # Usuario no autenticado / modo caja
+        resp_crud = self.client.get("/crud/")
+        self.assertEqual(resp_crud.status_code, 302)
+        self.assertIn("/login/", resp_crud.url)
+
+        resp_inv = self.client.get("/inventario/")
+        self.assertEqual(resp_inv.status_code, 302)
+
+        resp_analisis = self.client.get("/data_analisis/")
+        self.assertEqual(resp_analisis.status_code, 302)
+
+        # Cajero logueado pero sin privilegios staff
+        self.client.login(username="cajero_test", password="password123")
+        resp_cajero = self.client.get("/crud/")
+        self.assertEqual(resp_cajero.status_code, 302)
+
+    def test_admin_has_full_access(self):
+        """El administrador tiene acceso completo a CRUD, Inventario y Data Análisis."""
+        self.client.login(username="admin_test", password="password123")
+
+        resp_crud = self.client.get("/crud/")
+        self.assertEqual(resp_crud.status_code, 200)
+
+        resp_inv = self.client.get("/inventario/")
+        self.assertEqual(resp_inv.status_code, 200)
+
+        resp_analisis = self.client.get("/data_analisis/")
+        self.assertEqual(resp_analisis.status_code, 200)
+        self.assertContains(resp_analisis, "Ticket Promedio")
+
+    def test_receta_escandallo_api_lifecycle(self):
+        """Verifica la asignación, consulta y eliminación de ingredientes en la receta de un plato."""
+        self.client.login(username="admin_test", password="password123")
+
+        # 1. Agregar ingrediente a la receta
+        resp_add = self.client.post(
+            f"/plato/{self.plato.id}/receta/guardar/",
+            data=json.dumps({"insumo_id": self.insumo_tomate.id, "cantidad": "0.350"}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp_add.status_code, 200)
+        self.assertTrue(resp_add.json()["success"])
+
+        # 2. Consultar receta
+        resp_get = self.client.get(f"/plato/{self.plato.id}/receta/")
+        self.assertEqual(resp_get.status_code, 200)
+        data = resp_get.json()
+        self.assertEqual(len(data["items"]), 1)
+        self.assertEqual(data["items"][0]["insumo_codigo"], "INS-TOM-01")
+        self.assertEqual(data["items"][0]["cantidad"], 0.35)
+        # Costo: 0.35 * 1200 = 420
+        self.assertEqual(data["plato"]["costo_total"], 420.0)
+
+        # 3. Eliminar ingrediente de la receta
+        item_id = data["items"][0]["id"]
+        resp_del = self.client.post(f"/receta/item/{item_id}/eliminar/")
+        self.assertEqual(resp_del.status_code, 200)
+        self.assertEqual(RecetaItem.objects.filter(plato=self.plato).count(), 0)
+
+    def test_data_analisis_ticket_promedio_calculation(self):
+        """Verifica el cálculo de Ticket Promedio con órdenes completadas."""
+        self.client.login(username="admin_test", password="password123")
+
+        # Crear 2 órdenes completadas: 1x4500 ($4500) y 3x4500 ($13500) -> Total $18000 -> Ticket Promedio $9000
+        o1 = Orden.objects.create(cliente="Cli 1", canal_venta="Local", estado=Orden.ESTADO_COMPLETADA)
+        OrdenItem.objects.create(orden=o1, plato=self.plato, cantidad=1)
+        o1.save()
+
+        o2 = Orden.objects.create(cliente="Cli 2", canal_venta="Delivery", estado=Orden.ESTADO_COMPLETADA)
+        OrdenItem.objects.create(orden=o2, plato=self.plato, cantidad=3)
+        o2.save()
+
+        # Orden eliminada/cancelada: no debe afectar las métricas de venta real
+        o3 = Orden.objects.create(cliente="Cli Cancelado", canal_venta="Local", estado=Orden.ESTADO_ELIMINADA)
+        OrdenItem.objects.create(orden=o3, plato=self.plato, cantidad=10)
+        o3.save()
+
+        resp = self.client.get("/data_analisis/")
+        self.assertEqual(resp.status_code, 200)
+        # Contexto contiene ticket_promedio = 9000.0 (18000 / 2)
+        self.assertEqual(resp.context["total_facturado"], 18000.0)
+        self.assertEqual(resp.context["total_ordenes_completadas"], 2)
+        self.assertEqual(resp.context["ticket_promedio"], 9000.0)
+
+

@@ -146,39 +146,71 @@
                 <!-- Nav Links -->
                 <nav class="flex items-center gap-1 sm:gap-2">
                     <a href="{% url 'Menu:inicio' %}" 
-                       class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
                        title="Cocina en Vivo (KDS)">
                         <i data-lucide="utensils" class="w-4 h-4 text-amber-400"></i>
-                        <span>Cocina KDS</span>
+                        <span>Cocina</span>
                     </a>
 
                     <a href="{% url 'Menu:pedidos_crear' %}" 
-                       class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
                        title="Punto de Venta (POS)">
                         <i data-lucide="shopping-bag" class="w-4 h-4 text-emerald-400"></i>
                         <span>POS</span>
                     </a>
 
+                    {% if user.is_authenticated and user.is_staff %}
                     <a href="{% url 'Menu:inventario' %}" 
-                       class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
                        title="Inventario y Alertas">
                         <i data-lucide="boxes" class="w-4 h-4 text-indigo-400"></i>
                         <span>Inventario</span>
                     </a>
 
                     <a href="{% url 'Menu:crud' %}" 
-                       class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
-                       title="Edición de Menú y Platos">
-                        <i data-lucide="edit-3" class="w-4 h-4 text-slate-400"></i>
-                        <span class="hidden md:inline">Edición</span>
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       title="Edición de Menú, Platos y Recetas">
+                        <i data-lucide="edit-3" class="w-4 h-4 text-amber-400"></i>
+                        <span>Edición</span>
                     </a>
 
                     <a href="{% url 'Menu:data_analisis' %}" 
-                       class="px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
-                       title="Analítica de Ventas">
-                        <i data-lucide="bar-chart-3" class="w-4 h-4 text-slate-400"></i>
-                        <span class="hidden lg:inline">Data Análisis</span>
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       title="Analítica de Ventas y Finanzas">
+                        <i data-lucide="bar-chart-3" class="w-4 h-4 text-sky-400"></i>
+                        <span class="hidden sm:inline">Data Análisis</span>
                     </a>
+                    {% endif %}
+
+                    <!-- Rol & Auth Controls -->
+                    <div class="h-6 w-px bg-slate-800 mx-1 hidden sm:block"></div>
+
+                    {% if user.is_authenticated and user.is_staff %}
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <i data-lucide="shield-check" class="w-3.5 h-3.5 text-amber-400"></i>
+                            <span class="hidden md:inline">{{ user.username }} (Admin)</span>
+                            <span class="md:hidden">Admin</span>
+                        </span>
+                        <a href="{% url 'Menu:logout' %}" 
+                           class="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                           title="Cerrar Sesión / Modo Caja">
+                            <i data-lucide="log-out" class="w-4 h-4"></i>
+                        </a>
+                    </div>
+                    {% else %}
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
+                            <span>Caja</span>
+                        </span>
+                        <a href="{% url 'Menu:login' %}" 
+                           class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition inline-flex items-center gap-1 shadow-sm">
+                            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                            <span>Admin</span>
+                        </a>
+                    </div>
+                    {% endif %}
                 </nav>
             </div>
         </div>
