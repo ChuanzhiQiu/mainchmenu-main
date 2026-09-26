@@ -25,15 +25,37 @@ from django.db.models.functions import ExtractHour
 logger = logging.getLogger(__name__)
 
 
-def get_current_restaurante(request) -> Restaurante:
-    """Obtiene el restaurante activo para la sesión o el inquilino base 'Mainch'."""
+def get_current_restaurante(request=None) -> Restaurante:
+    """
+    Obtiene el restaurante activo siguiendo la jerarquía:
+    1. request.restaurante (inyectado por TenantMiddleware)
+    2. ContextVar current_tenant (vía get_current_tenant())
+    3. request.session['active_tenant_slug'] si request está disponible
+    4. Fallback a inquilino base 'Mainch'
+    """
+    if request is not None and hasattr(request, 'restaurante') and request.restaurante:
+        return request.restaurante
+
+    from Menu.tenant_context import get_current_tenant
+    ctx_tenant = get_current_tenant()
+    if ctx_tenant:
+        return ctx_tenant
+
+    if request is not None and hasattr(request, 'session'):
+        session_slug = request.session.get('active_tenant_slug')
+        if session_slug:
+            r = Restaurante.objects.filter(slug__iexact=session_slug, activo=True).first()
+            if r:
+                return r
+
     restaurante = Restaurante.objects.filter(slug="mainch").first()
     if not restaurante:
         restaurante, _ = Restaurante.objects.get_or_create(
             slug="mainch",
-            defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile"}
+            defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile", "activo": True}
         )
     return restaurante
+
 
 
 
@@ -183,11 +205,13 @@ def confirmar_orden(request, id):
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "Método no permitido."}, status=405)
 
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     # 1. Obtención segura del objeto Orden sin enmascarar Http404 (TC-B02-29)
     try:
-        orden = Orden.objects.get(id=id)
+        orden = Orden.objects.get(id=id, restaurante=restaurante)
     except Orden.DoesNotExist:
         return JsonResponse({"success": False, "error": "Orden no encontrada.", "message": "Orden no encontrada."}, status=404)
+
 
     # 1.1 Guardrail operativo: Rechazar órdenes en estado Eliminada
     if orden.estado == Orden.ESTADO_ELIMINADA:
@@ -251,7 +275,8 @@ def confirmar_orden(request, id):
         movimientos_count = 0
         error_deduccion = None
         try:
-            res_deduccion = descontar_stock_orden(orden.id)
+            res_deduccion = descontar_stock_orden(orden.id, restaurante_esperado=restaurante)
+
             if res_deduccion and res_deduccion.get("success"):
                 alertas_stock = res_deduccion.get("alertas_stock_minimo", [])
                 movimientos_count = res_deduccion.get("movimientos", 0)
@@ -310,26 +335,46 @@ def confirmar_orden(request, id):
         return JsonResponse({"success": False, "message": f"Error al procesar confirmación: {str(e)}"}, status=500)
 
 #ELIMINAR ORDEN
-def eliminar_orden(request, id):
-    if request.method == "POST":
-        try:
-            with transaction.atomic():
-                orden = get_object_or_404(Orden, id=id)
-                orden.estado = Orden.ESTADO_ELIMINADA
-                orden.descuento = 0
-                orden.tipo_pago = 'No especificado'  # Valor predeterminado válido
-                orden.save(update_fields=["estado", "descuento", "tipo_pago"])
-                return JsonResponse({"success": True, "message": f"La orden {orden.id} fue eliminada exitosamente."})
-        except Exception as e:
-            return JsonResponse({"success": False, "message": str(e)})
+def eliminar_orden(request, id=None):
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido."}, status=405)
 
-    return JsonResponse({"success": False, "message": "Método no permitido."}, status=405)
+    if id is None:
+        if request.body:
+            try:
+                data = json.loads(request.body.decode("utf-8"))
+                id = data.get("id")
+            except Exception:
+                pass
+        if id is None:
+            id = request.POST.get("id")
+
+    if not id:
+        return JsonResponse({"success": False, "error": "ID de orden no proporcionado.", "message": "ID de orden no proporcionado."}, status=400)
+
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    try:
+        with transaction.atomic():
+            orden = get_object_or_404(Orden, id=id, restaurante=restaurante)
+            orden.estado = Orden.ESTADO_ELIMINADA
+            orden.descuento = 0
+            orden.tipo_pago = 'No especificado'  # Valor predeterminado válido
+            orden.save(update_fields=["estado", "descuento", "tipo_pago"])
+            return JsonResponse({"success": True, "message": f"La orden {orden.id} fue eliminada exitosamente."})
+    except Http404:
+        return JsonResponse({"success": False, "error": "Orden no encontrada.", "message": "Orden no encontrada."}, status=404)
+    except Exception as e:
+        logger.exception("Error al eliminar orden: %s", e)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
 
 # -------------------------- GENERAR ORDENES Y VERLAS --------------------
 
 # Crear una Orden
 def crear_orden(request):
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     if request.method == "POST":
+
         is_json = request.content_type == "application/json"
         is_ajax = (
             request.headers.get("x-requested-with") == "XMLHttpRequest"
@@ -472,7 +517,7 @@ def crear_orden(request):
 
                 if tipo == "plato":
                     try:
-                        plato = Plato.objects.get(id=obj_id)
+                        plato = Plato.objects.get(id=obj_id, restaurante=restaurante)
                         items_to_create.append(("plato", plato, cantidad))
                     except (Plato.DoesNotExist, ValueError, TypeError):
                         msg = f"Plato con ID {obj_id} no existe."
@@ -482,7 +527,7 @@ def crear_orden(request):
                         return redirect("Menu:crear_orden")
                 elif tipo == "menu":
                     try:
-                        menu = Menu.objects.get(id=obj_id)
+                        menu = Menu.objects.get(id=obj_id, restaurante=restaurante)
                         items_to_create.append(("menu", menu, cantidad))
                     except (Menu.DoesNotExist, ValueError, TypeError):
                         msg = f"Menú con ID {obj_id} no existe."
@@ -515,7 +560,7 @@ def crear_orden(request):
                             return redirect("Menu:crear_orden")
                         try:
                             plato_id_int = int(plato_id)
-                            plato = Plato.objects.get(id=plato_id_int)
+                            plato = Plato.objects.get(id=plato_id_int, restaurante=restaurante)
                             items_to_create.append(("plato", plato, cant))
                         except (Plato.DoesNotExist, ValueError, TypeError):
                             if is_json or is_ajax:
@@ -543,7 +588,7 @@ def crear_orden(request):
                             return redirect("Menu:crear_orden")
                         try:
                             menu_id_int = int(menu_id)
-                            menu = Menu.objects.get(id=menu_id_int)
+                            menu = Menu.objects.get(id=menu_id_int, restaurante=restaurante)
                             items_to_create.append(("menu", menu, cant))
                         except (Menu.DoesNotExist, ValueError, TypeError):
                             if is_json or is_ajax:
@@ -562,7 +607,6 @@ def crear_orden(request):
 
         # 6. Creación atómica de la orden con Price Tiers y restaurante
         try:
-            restaurante = get_current_restaurante(request)
             with transaction.atomic():
                 nueva_orden = Orden(
                     restaurante=restaurante,
@@ -578,6 +622,7 @@ def crear_orden(request):
                     if item_type == "plato":
                         precio_canal = obj.get_precio_para_canal(canal_venta)
                         OrdenItem.objects.create(
+                            restaurante=restaurante,
                             orden=nueva_orden,
                             plato=obj,
                             cantidad=cant,
@@ -585,11 +630,13 @@ def crear_orden(request):
                         )
                     elif item_type == "menu":
                         OrdenItem.objects.create(
+                            restaurante=restaurante,
                             orden=nueva_orden,
                             menu=obj,
                             cantidad=cant,
                             precio_unitario=obj.precio_menus
                         )
+
 
                 nueva_orden.monto_total = nueva_orden.calcular_total()
                 nueva_orden.save(update_fields=["monto_total"])
@@ -639,15 +686,18 @@ def crear_orden(request):
         "canales_ventas": canales_ventas,
         "tipos_pago": tipos_pago,
         "es_admin": es_admin,
+        "restaurante": restaurante,
     })
+
 
 # -------------------- GESTIÓN DE RECETAS / ESCANDALLO (DUEÑO) --------------------
 
 @admin_required
 def obtener_receta_plato(request, plato_id):
     """Devuelve los insumos asociados al plato (escandallo), su costo unitario y subtotal."""
-    plato = get_object_or_404(Plato, id=plato_id)
-    items = RecetaItem.objects.filter(plato=plato).select_related('insumo')
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
+    items = RecetaItem.objects.filter(plato=plato, restaurante=restaurante).select_related('insumo')
     
     costo_total = Decimal("0.0")
     items_data = []
@@ -665,7 +715,7 @@ def obtener_receta_plato(request, plato_id):
             "costo_subtotal": float(costo_item)
         })
 
-    todos_insumos = Insumo.objects.filter(activo=True).order_by('nombre')
+    todos_insumos = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
     insumos_disponibles = [
         {"id": ins.id, "nombre": ins.nombre, "codigo": ins.codigo, "unidad": ins.unidad_medida, "costo": float(ins.costo_unitario)}
         for ins in todos_insumos
@@ -696,8 +746,9 @@ def guardar_ingrediente_receta(request, plato_id):
         return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
 
     try:
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
         data = json.loads(request.body) if request.body and request.content_type == "application/json" else request.POST
-        plato = get_object_or_404(Plato, id=plato_id)
+        plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
         insumo_id = data.get("insumo_id")
         cantidad_raw = data.get("cantidad")
 
@@ -708,9 +759,10 @@ def guardar_ingrediente_receta(request, plato_id):
         if cantidad <= Decimal("0.0"):
             return JsonResponse({"success": False, "message": "La cantidad requerida debe ser estrictamente mayor a 0."}, status=400)
 
-        insumo = get_object_or_404(Insumo, id=insumo_id)
+        insumo = get_object_or_404(Insumo, id=insumo_id, restaurante=restaurante)
 
         item, created = RecetaItem.objects.update_or_create(
+            restaurante=restaurante,
             plato=plato,
             insumo=insumo,
             defaults={"cantidad": cantidad}
@@ -733,7 +785,8 @@ def eliminar_ingrediente_receta(request, item_id):
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
 
-    item = get_object_or_404(RecetaItem, id=item_id)
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    item = get_object_or_404(RecetaItem, id=item_id, restaurante=restaurante)
     insumo_nombre = item.insumo.nombre
     item.delete()
     return JsonResponse({
@@ -745,7 +798,8 @@ def eliminar_ingrediente_receta(request, item_id):
 @admin_required
 def obtener_price_tiers_plato(request, plato_id):
     """Devuelve los precios configurados y SKUs externos por canal para un plato."""
-    plato = get_object_or_404(Plato, id=plato_id)
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
     tiers = PlatoPrecioCanal.objects.filter(plato=plato)
     
     canales_dict = {tier.canal: tier for tier in tiers}
@@ -779,14 +833,16 @@ def guardar_price_tier_plato(request, plato_id):
         return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
 
     try:
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
         data = json.loads(request.body) if request.body and request.content_type == "application/json" else request.POST
-        plato = get_object_or_404(Plato, id=plato_id)
+        plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
         canal = data.get("canal")
         precio_raw = data.get("precio")
         sku_externo = (data.get("sku_externo") or "").strip()
         disponible = data.get("disponible", True)
 
         if not canal or precio_raw is None:
+
             return JsonResponse({"success": False, "message": "Canal y precio son obligatorios."}, status=400)
 
         precio = float(precio_raw)
@@ -861,18 +917,21 @@ def delivery_webhook_api(request, plataforma):
 
 @admin_required
 def crud(request):
-    platos = Plato.objects.all().order_by('id')
-    menus = Menu.objects.all().order_by('id')
-    insumos = Insumo.objects.filter(activo=True).order_by('nombre')
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    platos = Plato.objects.filter(restaurante=restaurante).order_by('id')
+    menus = Menu.objects.filter(restaurante=restaurante).order_by('id')
+    insumos = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
     return render(request, "Menu/crud.html", {
         "platos": platos, 
         "menus": menus,
-        "insumos": insumos
+        "insumos": insumos,
+        "restaurante": restaurante,
     })
 
 @admin_required
 def guardar_plato(request):
     if request.method == 'POST':
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
         plato_id = request.POST.get('id')
         nombre = request.POST.get('nombre')
         valor = request.POST.get('valor')
@@ -882,14 +941,14 @@ def guardar_plato(request):
 
         if plato_id:
             # Editar plato existente
-            plato = get_object_or_404(Plato, id=plato_id)
+            plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
             plato.nombre = nombre
             plato.valor = valor
             plato.save()
             return JsonResponse({'success': True, 'message': 'Plato editado exitosamente.'})
         else:
             # Crear nuevo plato
-            Plato.objects.create(nombre=nombre, valor=valor)
+            Plato.objects.create(restaurante=restaurante, nombre=nombre, valor=valor)
             return JsonResponse({'success': True, 'message': 'Plato creado exitosamente.'})
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
@@ -897,11 +956,12 @@ def guardar_plato(request):
 @admin_required
 def eliminar_plato(request):
     if request.method == 'POST':
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
         data = json.loads(request.body)
         plato_id = data.get('id')
 
         if plato_id:
-            plato = get_object_or_404(Plato, id=plato_id)
+            plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
             plato.delete()
             return JsonResponse({'success': True, 'message': 'Plato eliminado exitosamente.'})
 
@@ -912,6 +972,7 @@ def eliminar_plato(request):
 @admin_required
 def guardar_menu(request):
     if request.method == 'POST':
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
         menu_id = request.POST.get('id')
         nombre = request.POST.get('nombre')
         precio = request.POST.get('precio_menus')
@@ -926,23 +987,25 @@ def guardar_menu(request):
             if not platos_ids:
                 return JsonResponse({'success': False, 'message': 'Debe seleccionar al menos un plato.'})
 
+            platos_qs = Plato.objects.filter(id__in=platos_ids, restaurante=restaurante)
+            if platos_qs.count() != len(set(platos_ids)):
+                return JsonResponse({'success': False, 'message': 'Platos no pertenecen al restaurante.'}, status=400)
+
             if menu_id:
-                menu = get_object_or_404(Menu, id=menu_id)
+                menu = get_object_or_404(Menu, id=menu_id, restaurante=restaurante)
                 menu.nombre = nombre
                 menu.precio_menus = precio
                 menu.save()
 
                 menu.platos.clear()
-                for plato_id in platos_ids:
-                    plato = get_object_or_404(Plato, id=plato_id)
+                for plato in platos_qs:
                     menu.platos.add(plato)
 
                 menu.full_clean()
                 return JsonResponse({'success': True, 'message': 'Menú editado exitosamente.'})
             else:
-                nuevo_menu = Menu.objects.create(nombre=nombre, precio_menus=precio)
-                for plato_id in platos_ids:
-                    plato = get_object_or_404(Plato, id=plato_id)
+                nuevo_menu = Menu.objects.create(restaurante=restaurante, nombre=nombre, precio_menus=precio)
+                for plato in platos_qs:
                     nuevo_menu.platos.add(plato)
 
                 nuevo_menu.full_clean()
@@ -959,13 +1022,14 @@ def guardar_menu(request):
 def eliminar_menu(request):
     if request.method == 'POST':
         try:
+            restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
             data = json.loads(request.body)
             menu_id = data.get('id')
 
             if not menu_id:
                 return JsonResponse({'success': False, 'message': 'ID de menú no proporcionado.'})
 
-            menu = get_object_or_404(Menu, id=menu_id)
+            menu = get_object_or_404(Menu, id=menu_id, restaurante=restaurante)
             menu.delete()
 
             return JsonResponse({'success': True, 'message': 'Menú eliminado exitosamente.'})
@@ -976,10 +1040,12 @@ def eliminar_menu(request):
 
 def detalles_menu(request, id):
     if request.method == 'GET':
-        menu = get_object_or_404(Menu, id=id)
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+        menu = get_object_or_404(Menu, id=id, restaurante=restaurante)
         platos = [{"id": plato.id, "nombre": plato.nombre} for plato in menu.platos.all()]
         return JsonResponse({"success": True, "platos": platos})
     return JsonResponse({"success": False, "message": "Método no permitido."})
+
 
 # -------------------- ANALISIS (DUEÑO / ADMIN) -----------------
 
@@ -993,6 +1059,7 @@ def data_analisis(request):
     - Distribución por Métodos de Pago y Canales de Venta.
     - Tendencias temporales de facturación e ingresos.
     """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     fecha_inicio_param = request.GET.get('fecha_inicio')
     fecha_fin_param = request.GET.get('fecha_fin')
 
@@ -1009,7 +1076,7 @@ def data_analisis(request):
             fecha_inicio = fecha_fin - timedelta(days=30)
 
         # Filtro de órdenes en rango (Para ventas reales consideramos órdenes no eliminadas)
-        ordenes_base = Orden.objects.filter(fecha__range=[fecha_inicio, fecha_fin])
+        ordenes_base = Orden.objects.filter(restaurante=restaurante, fecha__range=[fecha_inicio, fecha_fin])
         ordenes_completadas = ordenes_base.filter(estado=Orden.ESTADO_COMPLETADA)
 
         # 1. KPIs Principales
@@ -1198,6 +1265,7 @@ def data_analisis(request):
         # Rango
         "fecha_inicio": fecha_inicio.strftime('%Y-%m-%d') if fecha_inicio else '',
         "fecha_fin": fecha_fin.strftime('%Y-%m-%d') if fecha_fin else '',
+        "restaurante": restaurante,
     }
 
     return render(request, "Menu/data_analisis.html", context)
@@ -1208,8 +1276,9 @@ def ticket_orden(request, id):
     Genera la comanda web térmica (58mm / 80mm) con soporte para auto-impresión window.print().
     Ruta canónica: /pedidos/<id>/ticket/ (con alias /orden/<id>/ticket/).
     """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     orden = get_object_or_404(
-        Orden.objects.prefetch_related('items__plato', 'items__menu__platos'),
+        Orden.objects.filter(restaurante=restaurante).prefetch_related('items__plato', 'items__menu__platos'),
         id=id
     )
 
@@ -1254,6 +1323,7 @@ def ticket_orden(request, id):
         'items_detalle': items_detalle,
         'formato': formato,
         'autoprint': autoprint,
+        'restaurante': restaurante,
     }
     return render(request, "Menu/ticket.html", context)
 
@@ -1273,14 +1343,15 @@ def inventario_view(request):
     - Soporta visualización de inactivos (?inactivos=1).
     - Métricas KPIs de cabecera.
     """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     if request.method == "POST":
         return ajustar_stock_view(request)
 
     mostrar_inactivos = request.GET.get("inactivos") == "1"
     if mostrar_inactivos:
-        insumos_qs = Insumo.objects.all()
+        insumos_qs = Insumo.objects.filter(restaurante=restaurante)
     else:
-        insumos_qs = Insumo.objects.filter(activo=True)
+        insumos_qs = Insumo.objects.filter(restaurante=restaurante, activo=True)
 
     query = request.GET.get("q", "").strip()
     if query:
@@ -1288,7 +1359,7 @@ def inventario_view(request):
             Q(nombre__icontains=query) | Q(codigo__icontains=query)
         )
 
-    todos_activos = Insumo.objects.filter(activo=True)
+    todos_activos = Insumo.objects.filter(restaurante=restaurante, activo=True)
     total_insumos = todos_activos.count()
     quiebre_count = todos_activos.filter(stock_actual__lte=Decimal("0.000")).count()
     bajo_minimo_count = todos_activos.filter(
@@ -1316,9 +1387,10 @@ def inventario_view(request):
         insumos_qs = insumos_qs.filter(stock_actual__gte=F("stock_minimo"))
 
     insumos = insumos_qs.order_by("nombre")
-    todos_insumos_ajuste = Insumo.objects.filter(activo=True).order_by("nombre")
+    todos_insumos_ajuste = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by("nombre")
 
     context = {
+        "restaurante": restaurante,
         "insumos": insumos,
         "todos_insumos_ajuste": todos_insumos_ajuste,
         "query": query,
@@ -1346,6 +1418,7 @@ def ajustar_stock_view(request):
     - Soporta conteo físico nuevo (nuevo_stock) o delta (cantidad + tipo).
     - Crea registro inmutable en MovimientoStock(tipo=tipo, orden=None).
     """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
 
@@ -1366,7 +1439,7 @@ def ajustar_stock_view(request):
 
     try:
         with transaction.atomic():
-            insumo = Insumo.objects.select_for_update().get(id=insumo_id)
+            insumo = Insumo.objects.select_for_update().get(id=insumo_id, restaurante=restaurante)
             stock_anterior = Decimal(str(insumo.stock_actual))
 
             tipo_mov = data.get("tipo", MovimientoStock.TIPO_AJUSTE_MANUAL)
@@ -1405,6 +1478,7 @@ def ajustar_stock_view(request):
             insumo.save(update_fields=["stock_actual"])
 
             movimiento = MovimientoStock.objects.create(
+                restaurante=restaurante,
                 insumo=insumo,
                 tipo=tipo_mov,
                 cantidad=cantidad_afectada,
@@ -1496,17 +1570,18 @@ def sugerencias_compra_api_view(request):
     usar_llm = usar_llm_param not in ["0", "false", "no", "off"]
 
     # 2. Invocación del servicio de forecasting con fallback determinista transparente
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     resultado = None
     try:
         from src.ai_forecast.forecaster import generar_sugerencias_compra
-        resultado = generar_sugerencias_compra(dias_proyeccion=dias, usar_llm=usar_llm)
+        resultado = generar_sugerencias_compra(dias_proyeccion=dias, usar_llm=usar_llm, restaurante=restaurante)
     except Exception as exc:
         logger.warning(
             "Fallo al invocar motor principal de forecasting (%s). Activando fallback ROP.", exc
         )
         try:
             from src.ai_forecast.fallback import calcular_reorden_heuristico
-            resultado = calcular_reorden_heuristico(dias_proyeccion=dias)
+            resultado = calcular_reorden_heuristico(dias_proyeccion=dias, restaurante=restaurante)
         except Exception as inner_exc:
             logger.exception("Fallo crítico en motor de fallback: %s", inner_exc)
             resultado = {

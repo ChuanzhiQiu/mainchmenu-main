@@ -19,13 +19,17 @@ from src.ai_forecast.schemas import SugerenciaOrdenCompra, InsumoSugerido
 
 def calcular_consumo_diario_historico(
     insumo_ids: List[int],
-    dias_historial: int = 30
+    dias_historial: int = 30,
+    restaurante: Optional[Any] = None,
 ) -> Dict[int, float]:
     """
     Calcula el consumo diario promedio de cada insumo analizando órdenes completadas
     en los últimos `dias_historial` días, desglosando platos y combos (Menu).
     """
     from Menu.models import Orden, OrdenItem, RecetaItem
+    if restaurante is None:
+        from Menu.tenant_context import get_current_tenant
+        restaurante = get_current_tenant()
 
     consumos: Dict[int, float] = {i_id: 0.0 for i_id in insumo_ids}
     if not insumo_ids:
@@ -36,6 +40,8 @@ def calcular_consumo_diario_historico(
 
     # Filtrar órdenes completadas
     qs_ordenes = Orden.objects.filter(estado=Orden.ESTADO_COMPLETADA)
+    if restaurante is not None:
+        qs_ordenes = qs_ordenes.filter(restaurante=restaurante)
     # Intentar por fecha_completada si existe
     if qs_ordenes.filter(fecha_completada__isnull=False).exists():
         qs_ordenes = qs_ordenes.filter(fecha_completada__gte=cutoff)
@@ -91,6 +97,7 @@ def calcular_reorden_heuristico(
     consumos_diarios: Optional[Dict[int, float]] = None,
     consumos_diarios_dict: Optional[Dict[int, float]] = None,
     solo_reorden: bool = False,
+    restaurante: Optional[Any] = None,
 ) -> SugerenciaOrdenCompra:
     """
     Motor heurístico determinista de reorden (ROP).
@@ -100,6 +107,9 @@ def calcular_reorden_heuristico(
     Retorna un objeto SugerenciaOrdenCompra validado con metodo="HEURISTIC_FALLBACK".
     """
     from Menu.models import Insumo
+    if restaurante is None:
+        from Menu.tenant_context import get_current_tenant
+        restaurante = get_current_tenant()
 
     # 1. Normalización de parámetros operativos
     lead_time = max(0, int(dias_lead_time))
@@ -107,7 +117,10 @@ def calcular_reorden_heuristico(
 
     # 2. Obtención de insumos si no se suministran
     if insumos is None:
-        lista_insumos = list(Insumo.objects.filter(activo=True).order_by("id"))
+        if restaurante is not None:
+            lista_insumos = list(Insumo.objects.filter(restaurante=restaurante, activo=True).order_by("id"))
+        else:
+            lista_insumos = list(Insumo.objects.filter(activo=True).order_by("id"))
     else:
         lista_insumos = list(insumos)
 
@@ -124,7 +137,7 @@ def calcular_reorden_heuristico(
     insumo_ids = [ins.id for ins in lista_insumos if getattr(ins, "id", None)]
 
     if consumos_dict is None:
-        consumos = calcular_consumo_diario_historico(insumo_ids, dias_historial=dias_historial)
+        consumos = calcular_consumo_diario_historico(insumo_ids, dias_historial=dias_historial, restaurante=restaurante)
     else:
         consumos = consumos_dict
 

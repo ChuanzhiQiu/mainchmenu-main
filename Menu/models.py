@@ -4,6 +4,9 @@ import uuid
 from django.db import models
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.utils import timezone
+from django.utils.text import slugify
+from Menu.managers import TenantManager
+
 
 
 # ==============================================================================
@@ -15,11 +18,11 @@ class Restaurante(models.Model):
     Representa a cada restaurante cliente dentro del sistema multi-inquilino.
     Por defecto, el inquilino principal y único inicial es 'Mainch'.
     """
-    nombre = models.CharField(max_length=100, unique=True, default="Mainch")
-    slug = models.SlugField(max_length=100, unique=True, default="mainch")
+    nombre = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True, db_index=True)
     direccion = models.CharField(max_length=255, blank=True, default="Valparaíso, Chile")
     telefono = models.CharField(max_length=50, blank=True, default="+56 9 1234 5678")
-    activo = models.BooleanField(default=True)
+    activo = models.BooleanField(default=True, db_index=True)
     api_key_delivery = models.CharField(
         max_length=100,
         unique=True,
@@ -34,6 +37,22 @@ class Restaurante(models.Model):
 
     def __str__(self):
         return self.nombre
+
+    def clean(self):
+        super().clean()
+        if not self.slug and self.nombre:
+            self.slug = slugify(self.nombre)
+        elif self.slug:
+            self.slug = slugify(self.slug)
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.nombre:
+            self.slug = slugify(self.nombre)
+        elif self.slug:
+            self.slug = slugify(self.slug)
+        self.clean()
+        super().save(*args, **kwargs)
+
 
 
 def get_default_restaurante():
@@ -56,8 +75,27 @@ class Plato(models.Model):
     nombre = models.CharField(max_length=100)
     valor = models.FloatField(verbose_name="Precio Base / Salón Local ($)")
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Plato"
+        verbose_name_plural = "Platos"
+
     def __str__(self):
         return self.nombre
+
+    def clean(self):
+        super().clean()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
 
     def get_precio_para_canal(self, canal: str) -> float:
         """Devuelve el precio del plato según el canal de venta (Price Tiering)."""
@@ -72,6 +110,7 @@ class Plato(models.Model):
         if precio_tier and precio_tier.sku_externo:
             return precio_tier.sku_externo
         return f"PLATO-{self.id}"
+
 
 
 # Price Tiering y SKU Mapping por Canal (Local vs Delivery Apps)
@@ -125,6 +164,14 @@ class Menu(models.Model):
     platos = models.ManyToManyField(Plato)
     precio_menus = models.FloatField()
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Menú"
+        verbose_name_plural = "Menús"
+
     def __str__(self):
         return self.nombre
 
@@ -139,12 +186,25 @@ class Menu(models.Model):
         return self.precio_real - self.precio_menus
 
     def clean(self):
-        if self.pk and not self.platos.exists():
-            raise ValidationError("El menú debe contener al menos un plato.")
+        super().clean()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        if self.pk:
+            if not self.platos.exists():
+                raise ValidationError("El menú debe contener al menos un plato.")
+            for plato in self.platos.all():
+                if plato.restaurante_id != self.restaurante_id:
+                    raise ValidationError(
+                        f"Contaminación cross-tenant detectada: El plato '{plato.nombre}' pertenece a "
+                        f"'{plato.restaurante.nombre}', no al combo del restaurante '{self.restaurante.nombre}'."
+                    )
 
     def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
         self.clean()
         super().save(*args, **kwargs)
+
 
 
 # Modelo para representar una orden
@@ -243,7 +303,17 @@ class Orden(models.Model):
         total_con_descuento = subtotal - descuento
         return max(round(total_con_descuento, 2), 0.0)
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    def clean(self):
+        super().clean()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+
     def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
         if self.descuento is None:
             self.descuento = 0.0
         else:
@@ -260,11 +330,18 @@ class Orden(models.Model):
         super().save(*args, **kwargs)
 
     class Meta:
+        base_manager_name = 'all_objects'
         verbose_name = "Orden"
         verbose_name_plural = "Órdenes"
 
 # Modelo para representar los ítems de una orden
 class OrdenItem(models.Model):
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='orden_items',
+        verbose_name="Restaurante"
+    )
     orden = models.ForeignKey(Orden, on_delete=models.CASCADE, related_name='items')
     plato = models.ForeignKey(Plato, on_delete=models.CASCADE, null=True, blank=True)
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, null=True, blank=True)
@@ -275,6 +352,14 @@ class OrdenItem(models.Model):
         help_text="Precio congelado al momento de la venta respetando Price Tier del canal."
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Ítem de Orden"
+        verbose_name_plural = "Ítems de Orden"
+
     def __str__(self):
         if self.plato:
             return f"{self.cantidad}x {self.plato.nombre}"
@@ -282,7 +367,52 @@ class OrdenItem(models.Model):
             return f"{self.cantidad}x {self.menu.nombre}"
         return "Item sin plato ni menú"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.restaurante_id:
+            if self.orden_id and hasattr(self, 'orden') and self.orden:
+                self.restaurante = self.orden.restaurante
+            elif self.plato_id and hasattr(self, 'plato') and self.plato:
+                self.restaurante = self.plato.restaurante
+            elif self.menu_id and hasattr(self, 'menu') and self.menu:
+                self.restaurante = self.menu.restaurante
+
+    def clean(self):
+        super().clean()
+        if self.orden_id and hasattr(self, 'orden') and self.orden:
+            if self.restaurante_id and self.restaurante_id != self.orden.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El item está asignado al restaurante ID {self.restaurante_id}, "
+                    f"pero la orden #{self.orden.id} pertenece al restaurante ID {self.orden.restaurante_id}."
+                )
+        if self.plato_id and self.menu_id:
+            raise ValidationError("El item de orden no puede tener simultáneamente plato y menú/combo.")
+
+        if self.plato_id and hasattr(self, 'plato') and self.plato:
+            if self.restaurante_id and self.plato.restaurante_id != self.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El plato '{self.plato.nombre}' "
+                    f"pertenece a '{self.plato.restaurante.nombre}', no a '{self.restaurante.nombre}'."
+                )
+
+        if self.menu_id and hasattr(self, 'menu') and self.menu:
+            if self.restaurante_id and self.menu.restaurante_id != self.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El menú '{self.menu.nombre}' "
+                    f"pertenece a '{self.menu.restaurante.nombre}', no a '{self.restaurante.nombre}'."
+                )
+
     def save(self, *args, **kwargs):
+        if self.orden_id and hasattr(self, 'orden') and self.orden:
+            self.restaurante = self.orden.restaurante
+        elif not self.restaurante_id:
+            if self.plato_id and hasattr(self, 'plato') and self.plato:
+                self.restaurante = self.plato.restaurante
+            elif self.menu_id and hasattr(self, 'menu') and self.menu:
+                self.restaurante = self.menu.restaurante
+            else:
+                self.restaurante_id = get_default_restaurante()
+
         if not self.precio_unitario or self.precio_unitario <= 0:
             if self.plato:
                 # Tomar price tier si la orden ya tiene canal
@@ -292,6 +422,8 @@ class OrdenItem(models.Model):
                     self.precio_unitario = self.plato.valor
             elif self.menu:
                 self.precio_unitario = self.menu.precio_menus
+
+        self.clean()
         super().save(*args, **kwargs)
 
     @property
@@ -305,6 +437,7 @@ class OrdenItem(models.Model):
             else:
                 unit_price = 0
         return self.cantidad * unit_price
+
 
 
 
@@ -339,9 +472,8 @@ class Insumo(models.Model):
 
     codigo = models.CharField(
         max_length=50,
-        unique=True,
         verbose_name="Código Insumo",
-        help_text="Identificador único o SKU del insumo (ej: INS-001, INS-PAN)."
+        help_text="Identificador único o SKU del insumo en el restaurante (ej: INS-001, INS-PAN)."
     )
     nombre = models.CharField(
         max_length=100,
@@ -378,10 +510,20 @@ class Insumo(models.Model):
         help_text="Permite borrado lógico (soft-delete) de insumos descontinuados."
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
+        base_manager_name = 'all_objects'
         verbose_name = "Insumo"
         verbose_name_plural = "Insumos"
         ordering = ['nombre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['restaurante', 'codigo'],
+                name='unique_restaurante_insumo_codigo'
+            )
+        ]
 
     def __str__(self):
         return f"{self.codigo} - {self.nombre}"
@@ -391,12 +533,44 @@ class Insumo(models.Model):
         """Determina si el insumo está estrictamente bajo el umbral de seguridad (TC-B02-25)."""
         return self.stock_actual < self.stock_minimo
 
+    def clean(self):
+        super().clean()
+        if self.codigo:
+            self.codigo = self.codigo.strip().upper()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        existing = Insumo.objects.filter(
+            restaurante_id=self.restaurante_id,
+            codigo__iexact=self.codigo
+        )
+        if self.pk:
+            existing = existing.exclude(pk=self.pk)
+        if existing.exists():
+            raise ValidationError(
+                f"Ya existe un insumo con el código '{self.codigo}' en este restaurante."
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        if self.codigo:
+            self.codigo = self.codigo.strip().upper()
+        self.clean()
+        super().save(*args, **kwargs)
+
+
 
 class RecetaItem(models.Model):
     """
     Representa el escandallo (Bill of Materials) vinculando un Plato con un Insumo.
     Define la cantidad requerida de materia prima para preparar una porción del plato.
     """
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='receta_items',
+        verbose_name="Restaurante"
+    )
     plato = models.ForeignKey(
         Plato,
         on_delete=models.CASCADE,
@@ -416,7 +590,11 @@ class RecetaItem(models.Model):
         help_text="Cantidad requerida en la unidad_medida del insumo (ej: 0.150 kg)."
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
+        base_manager_name = 'all_objects'
         verbose_name = "Ítem de Receta / Escandallo"
         verbose_name_plural = "Ítems de Receta / Escandallo"
         unique_together = ('plato', 'insumo')
@@ -446,6 +624,48 @@ class RecetaItem(models.Model):
         cantidad_str = f"{self.cantidad}{unidad}" if self.cantidad is not None else "0"
         return f"{plato_nombre} -> {cantidad_str} de {insumo_nombre}"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.restaurante_id:
+            if self.plato_id and hasattr(self, 'plato') and self.plato:
+                self.restaurante = self.plato.restaurante
+            elif self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+                self.restaurante = self.insumo.restaurante
+
+    def clean(self):
+        super().clean()
+        if self.plato_id and hasattr(self, 'plato') and self.plato:
+            if not self.restaurante_id:
+                self.restaurante = self.plato.restaurante
+            elif self.restaurante_id != self.plato.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El plato '{self.plato.nombre}' pertenece a "
+                    f"'{self.plato.restaurante.nombre}', pero la receta pertenece a '{self.restaurante.nombre}'."
+                )
+
+        if self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+            if not self.restaurante_id:
+                self.restaurante = self.insumo.restaurante
+            elif self.restaurante_id != self.insumo.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El insumo '{self.insumo.nombre}' pertenece a "
+                    f"'{self.insumo.restaurante.nombre}', pero la receta pertenece a '{self.restaurante.nombre}'."
+                )
+
+        if self.cantidad is not None and self.cantidad <= Decimal('0.000'):
+            raise ValidationError("La cantidad requerida de insumo en la receta debe ser mayor a 0.")
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            if self.plato_id and hasattr(self, 'plato') and self.plato:
+                self.restaurante = self.plato.restaurante
+            elif self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+                self.restaurante = self.insumo.restaurante
+            else:
+                self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
+
 
 class MovimientoStock(models.Model):
     """
@@ -466,6 +686,12 @@ class MovimientoStock(models.Model):
         (TIPO_MERMA_DESPERDICIO, 'Merma / Desperdicio (Alias Extendido)'),
     ]
 
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='movimientos_stock',
+        verbose_name="Restaurante"
+    )
     insumo = models.ForeignKey(
         Insumo,
         on_delete=models.CASCADE,
@@ -512,10 +738,53 @@ class MovimientoStock(models.Model):
         verbose_name="Notas de Auditoría"
     )
 
+    objects = TenantManager()
+    all_objects = models.Manager()
+
     class Meta:
+        base_manager_name = 'all_objects'
         verbose_name = "Movimiento de Stock (Kardex)"
         verbose_name_plural = "Movimientos de Stock (Kardex)"
         ordering = ['-fecha_hora', '-id']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.restaurante_id:
+            if self.orden_id and hasattr(self, 'orden') and self.orden:
+                self.restaurante = self.orden.restaurante
+            elif self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+                self.restaurante = self.insumo.restaurante
+
+    def clean(self):
+        super().clean()
+        if not self.restaurante_id:
+            if self.orden_id and hasattr(self, 'orden') and self.orden:
+                self.restaurante = self.orden.restaurante
+            elif self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+                self.restaurante = self.insumo.restaurante
+
+        if self.insumo_id and hasattr(self, 'insumo') and self.insumo and self.restaurante_id and self.insumo.restaurante_id != self.restaurante_id:
+            raise ValidationError(
+                f"Contaminación cross-tenant detectada: El insumo '{self.insumo.nombre}' pertenece a "
+                f"'{self.insumo.restaurante.nombre}', pero el movimiento Kardex está asignado a '{self.restaurante.nombre}'."
+            )
+
+        if self.orden_id and hasattr(self, 'orden') and self.orden and self.restaurante_id and self.orden.restaurante_id != self.restaurante_id:
+            raise ValidationError(
+                f"Contaminación cross-tenant detectada: La orden #{self.orden.id} pertenece a "
+                f"'{self.orden.restaurante.nombre}', pero el movimiento Kardex está asignado a '{self.restaurante.nombre}'."
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            if self.orden_id and hasattr(self, 'orden') and self.orden:
+                self.restaurante = self.orden.restaurante
+            elif self.insumo_id and hasattr(self, 'insumo') and self.insumo:
+                self.restaurante = self.insumo.restaurante
+            else:
+                self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         # 1. Manejo seguro de fecha_hora (localizada en zona horaria si es aware)
@@ -542,4 +811,5 @@ class MovimientoStock(models.Model):
         tipo_str = self.tipo or "MOVIMIENTO"
 
         return f"[{fecha_str}] {id_str} {tipo_str}: {insumo_nombre} ({cantidad_str})"
+
 

@@ -26,13 +26,20 @@ logger = logging.getLogger(__name__)
 def calcular_consumo_diario_insumos(
     dias_historia: int = 30,
     factor_demanda: float = 1.0,
+    restaurante: Optional[Any] = None,
 ) -> Dict[int, float]:
     """
     Agrega el consumo histórico de ventas de órdenes 'Completada',
     explotando platos directos y platos de combos (Menu), dividido por los días observados.
     """
+    if restaurante is None:
+        from Menu.tenant_context import get_current_tenant
+        restaurante = get_current_tenant()
+
     # 1. Filtrar órdenes válidas (excluir Eliminadas y considerar Completadas)
     qs_ordenes = Orden.objects.filter(estado=Orden.ESTADO_COMPLETADA)
+    if restaurante is not None:
+        qs_ordenes = qs_ordenes.filter(restaurante=restaurante)
     if dias_historia and dias_historia > 0:
         fecha_corte = timezone.now().date() - timezone.timedelta(days=dias_historia)
         qs_ordenes = qs_ordenes.filter(fecha__gte=fecha_corte)
@@ -160,10 +167,15 @@ def generar_sugerencias_compra(
     factor_demanda: float = 1.0,
     insumos: Optional[List[Insumo]] = None,
     dias_lead_time: int = 2,
+    restaurante: Optional[Any] = None,
 ) -> SugerenciaOrdenCompra:
     """
     Servicio principal de previsión de demanda y generación de sugerencias de compra.
     """
+    if restaurante is None:
+        from Menu.tenant_context import get_current_tenant
+        restaurante = get_current_tenant()
+
     # 1. Normalización de parámetros
     try:
         dias_proyeccion = int(dias_proyeccion)
@@ -174,7 +186,10 @@ def generar_sugerencias_compra(
 
     # 2. Obtención de insumos activos
     if insumos is None:
-        insumos = list(Insumo.objects.filter(activo=True).order_by("id"))
+        if restaurante is not None:
+            insumos = list(Insumo.objects.filter(restaurante=restaurante, activo=True).order_by("id"))
+        else:
+            insumos = list(Insumo.objects.filter(activo=True).order_by("id"))
 
     if not insumos:
         return SugerenciaOrdenCompra(
@@ -188,6 +203,7 @@ def generar_sugerencias_compra(
     consumos_diarios = calcular_consumo_diario_insumos(
         dias_historia=dias_historia,
         factor_demanda=factor_demanda,
+        restaurante=restaurante,
     )
 
     # 4. Decisión de ejecución: Heurístico vs LLM
@@ -197,6 +213,7 @@ def generar_sugerencias_compra(
             consumos_diarios=consumos_diarios,
             dias_lead_time=dias_lead_time,
             dias_proyeccion=dias_proyeccion,
+            restaurante=restaurante,
         )
 
     # 5. Flujo LLM con Guardrails
@@ -240,4 +257,5 @@ def generar_sugerencias_compra(
             consumos_diarios=consumos_diarios,
             dias_lead_time=dias_lead_time,
             dias_proyeccion=dias_proyeccion,
+            restaurante=restaurante,
         )

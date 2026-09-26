@@ -37,7 +37,20 @@ class E2EBaseMixin:
     WORKSPACE_ROOT = WORKSPACE_ROOT
 
     def get_client(self):
-        return Client()
+        client = Client()
+        from django.contrib.auth.models import User
+        try:
+            admin_user, _ = User.objects.get_or_create(
+                username="e2e_admin",
+                defaults={"is_staff": True, "is_superuser": True}
+            )
+            if not admin_user.is_staff:
+                admin_user.is_staff = True
+                admin_user.save()
+            client.force_login(admin_user)
+        except Exception:
+            pass
+        return client
 
     def require_model(self, app_label, model_name, feature_id=""):
         """Dynamically get model from Django app registry or fail test cleanly."""

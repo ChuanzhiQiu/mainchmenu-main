@@ -16,7 +16,7 @@ from Menu.models import Insumo, Menu, MovimientoStock, Orden, OrdenItem, Plato, 
 logger = logging.getLogger(__name__)
 
 
-def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
+def descontar_stock_orden(orden_id: Union[int, Orden], restaurante_esperado: Optional[Any] = None) -> Dict[str, Any]:
     """
     Descuenta de forma atómica e idempotente el stock de insumos consumidos por una orden.
     
@@ -33,6 +33,7 @@ def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
     10. Detección y retorno de alertas de stock mínimo o quiebre.
 
     :param orden_id: ID entero de la Orden o instancia del modelo Orden.
+    :param restaurante_esperado: Instancia de Restaurante o ID para validación cruzada.
     :return: Diccionario con estado de éxito, conteo de movimientos y alertas de stock mínimo.
     """
     # Normalización del parámetro de entrada
@@ -53,6 +54,22 @@ def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
                     "alertas_stock_minimo": [],
                     "movimientos": 0,
                 }
+
+            # 1.1 Validación de inquilino (Cross-Tenant Guardrail)
+            if restaurante_esperado is not None:
+                expected_id = getattr(restaurante_esperado, "id", restaurante_esperado)
+                if orden.restaurante_id != expected_id:
+                    logger.warning(
+                        "Violación de aislamiento multi-tenant en orden %s: esperada %s, encontrada %s",
+                        orden_id, expected_id, orden.restaurante_id
+                    )
+                    return {
+                        "success": False,
+                        "error": f"La orden #{orden_id} no pertenece al restaurante especificado.",
+                        "message": f"La orden #{orden_id} no pertenece al restaurante especificado.",
+                        "alertas_stock_minimo": [],
+                        "movimientos": 0,
+                    }
 
             # 2. Verificar estado de la orden (Órdenes eliminadas no descuentan stock)
             if orden.estado == Orden.ESTADO_ELIMINADA:
@@ -124,7 +141,7 @@ def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
 
             recetas = (
                 RecetaItem.objects
-                .filter(plato_id__in=platos_demandados.keys())
+                .filter(plato_id__in=platos_demandados.keys(), restaurante=orden.restaurante)
                 .select_related("insumo")
             )
 
@@ -153,7 +170,7 @@ def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
             insumo_ids_ordenados = sorted(insumo_demandas.keys())
             insumos_bloqueados = (
                 Insumo.objects
-                .filter(id__in=insumo_ids_ordenados)
+                .filter(id__in=insumo_ids_ordenados, restaurante=orden.restaurante)
                 .select_for_update()
                 .order_by("id")
             )
@@ -176,6 +193,7 @@ def descontar_stock_orden(orden_id: Union[int, Orden]) -> Dict[str, Any]:
 
                 # Registro inmutable en Kardex
                 mov = MovimientoStock(
+                    restaurante=orden.restaurante,
                     insumo=insumo,
                     tipo="CONSUMO_ORDEN",
                     cantidad=cant_a_descontar,
