@@ -34,49 +34,55 @@ class TenantMiddleware:
         restaurante = None
         match = TENANT_URL_REGEX.match(request.path_info)
 
-        if match:
-            # Tier 1: Canonical URL slug (Absolute Precedence)
-            slug = match.group("slug")
-            restaurante = Restaurante.objects.filter(slug__iexact=slug, activo=True).first()
-            if not restaurante:
-                raise Http404(f"El restaurante '{slug}' no existe o se encuentra inactivo.")
-
-            # Synchronize session with active slug
-            if hasattr(request, "session"):
-                request.session["active_tenant_slug"] = restaurante.slug
-        else:
-            # Tier 2: Check custom request header (X-Tenant-Slug)
-            header_slug = request.headers.get("X-Tenant-Slug") or request.META.get("HTTP_X_TENANT_SLUG")
-            if header_slug:
-                restaurante = Restaurante.objects.filter(slug__iexact=header_slug.strip(), activo=True).first()
-
-            # Tier 3: Check Referer header (prevents multi-tab session overwrites on naked endpoints)
-            if not restaurante:
-                referer = request.headers.get("Referer") or request.META.get("HTTP_REFERER")
-                if referer:
-                    try:
-                        ref_path = urlparse(referer).path
-                        ref_match = TENANT_URL_REGEX.match(ref_path)
-                        if ref_match:
-                            ref_slug = ref_match.group("slug")
-                            restaurante = Restaurante.objects.filter(slug__iexact=ref_slug, activo=True).first()
-                    except Exception:
-                        pass
-
-            # Tier 4: Check Session
-            if not restaurante and hasattr(request, "session"):
-                session_slug = request.session.get("active_tenant_slug")
-                if session_slug:
-                    restaurante = Restaurante.objects.filter(slug__iexact=session_slug, activo=True).first()
-
-            # Tier 5: Fallback to default tenant 'mainch'
-            if not restaurante:
-                restaurante = Restaurante.objects.filter(slug="mainch").first()
+        try:
+            if match:
+                # Tier 1: Canonical URL slug (Absolute Precedence)
+                slug = match.group("slug")
+                restaurante = Restaurante.objects.filter(slug__iexact=slug, activo=True).first()
                 if not restaurante:
-                    restaurante, _ = Restaurante.objects.get_or_create(
-                        slug="mainch",
-                        defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile", "activo": True}
-                    )
+                    raise Http404(f"El restaurante '{slug}' no existe o se encuentra inactivo.")
+
+                # Synchronize session with active slug
+                if hasattr(request, "session"):
+                    request.session["active_tenant_slug"] = restaurante.slug
+            else:
+                # Tier 2: Check custom request header (X-Tenant-Slug)
+                header_slug = request.headers.get("X-Tenant-Slug") or request.META.get("HTTP_X_TENANT_SLUG")
+                if header_slug:
+                    restaurante = Restaurante.objects.filter(slug__iexact=header_slug.strip(), activo=True).first()
+
+                # Tier 3: Check Referer header (prevents multi-tab session overwrites on naked endpoints)
+                if not restaurante:
+                    referer = request.headers.get("Referer") or request.META.get("HTTP_REFERER")
+                    if referer:
+                        try:
+                            ref_path = urlparse(referer).path
+                            ref_match = TENANT_URL_REGEX.match(ref_path)
+                            if ref_match:
+                                ref_slug = ref_match.group("slug")
+                                restaurante = Restaurante.objects.filter(slug__iexact=ref_slug, activo=True).first()
+                        except Exception:
+                            pass
+
+                # Tier 4: Check Session
+                if not restaurante and hasattr(request, "session"):
+                    session_slug = request.session.get("active_tenant_slug")
+                    if session_slug:
+                        restaurante = Restaurante.objects.filter(slug__iexact=session_slug, activo=True).first()
+
+                # Tier 5: Fallback to default tenant 'mainch'
+                if not restaurante:
+                    restaurante = Restaurante.objects.filter(slug="mainch").first()
+                    if not restaurante:
+                        restaurante, _ = Restaurante.objects.get_or_create(
+                            slug="mainch",
+                            defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile", "activo": True}
+                        )
+        except Http404:
+            raise
+        except Exception as exc:
+            logger.error("Error resolving tenant in TenantMiddleware (possible unmigrated database): %s", exc)
+            restaurante = None
 
         # Attach to request and activate ContextVar
         request.restaurante = restaurante
