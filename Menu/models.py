@@ -5,6 +5,8 @@ from django.db import models
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.utils import timezone
 from django.utils.text import slugify
+from django.contrib.auth.models import User
+from django.contrib.auth.hashers import make_password, check_password
 from Menu.managers import TenantManager
 
 
@@ -280,6 +282,22 @@ class Orden(models.Model):
         blank=True,
         verbose_name="Fecha Completada",
         help_text="Timestamp exacto en que la orden pasó a estado Completada y descontó stock."
+    )
+    cajero = models.ForeignKey(
+        'Cajero',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='ordenes',
+        verbose_name="Cajero Responsable"
+    )
+    turno = models.ForeignKey(
+        'TurnoCaja',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='ordenes',
+        verbose_name="Turno de Caja"
     )
 
     def __str__(self):
@@ -811,5 +829,281 @@ class MovimientoStock(models.Model):
         tipo_str = self.tipo or "MOVIMIENTO"
 
         return f"[{fecha_str}] {id_str} {tipo_str}: {insumo_nombre} ({cantidad_str})"
+
+
+# ==============================================================================
+# LAYER 1: RESTAURANT TERMINAL PERSISTENCE & HARDWARE PAIRING (M7)
+# ==============================================================================
+
+class Terminal(models.Model):
+    """
+    Representa un dispositivo físico (PC POS, Tablet, KDS Cocina) autorizado
+    para operar en un restaurante determinado dentro de la Capa 1 de seguridad.
+    """
+    TIPO_POS = 'POS'
+    TIPO_KDS = 'KDS'
+    TIPO_MOSTRADOR = 'MOSTRADOR'
+    TIPO_CHOICES = [
+        (TIPO_POS, 'Punto de Venta (POS)'),
+        (TIPO_KDS, 'Pantalla de Cocina (KDS)'),
+        (TIPO_MOSTRADOR, 'Terminal Mostrador / Cobro'),
+    ]
+
+    restaurante = models.ForeignKey(
+        'Restaurante',
+        on_delete=models.CASCADE,
+        related_name="terminales",
+        verbose_name="Restaurante"
+    )
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False,
+        db_index=True,
+        verbose_name="UUID Único de Dispositivo"
+    )
+    nombre = models.CharField(
+        max_length=100,
+        default="Terminal Mostrador 1",
+        verbose_name="Nombre de la Terminal"
+    )
+    tipo = models.CharField(
+        max_length=20,
+        choices=TIPO_CHOICES,
+        default=TIPO_POS,
+        verbose_name="Tipo de Terminal"
+    )
+    activo = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="Activo",
+        help_text="Permite la revocación instantánea en caso de extravío o robo del dispositivo."
+    )
+    ultimo_acceso = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Última Actividad"
+    )
+    ip_registro = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="IP de Activación"
+    )
+    user_agent = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="User Agent del Dispositivo"
+    )
+    creado_el = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Fecha de Activación"
+    )
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Terminal de Restaurante"
+        verbose_name_plural = "Terminales de Restaurante"
+        ordering = ['restaurante', 'nombre']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.restaurante.nombre}) [{'Activa' if self.activo else 'Revocada'}]"
+
+
+# ==============================================================================
+# LAYER 2: STAFF & SHIFT MANAGEMENT (PIN SECURITY & ARQUEO DE CAJA) - M7
+# ==============================================================================
+
+class Cajero(models.Model):
+    """Personal de caja asignado a un restaurante específico para desbloqueo por PIN."""
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="cajeros",
+        verbose_name="Restaurante"
+    )
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="perfil_cajero"
+    )
+    nombre = models.CharField(max_length=100, verbose_name="Nombre")
+    codigo_empleado = models.CharField(
+        max_length=20,
+        blank=True,
+        verbose_name="Código de Empleado"
+    )
+    pin_hash = models.CharField(
+        max_length=128,
+        help_text="Hash PBKDF2 del PIN numérico de 4 dígitos"
+    )
+    activo = models.BooleanField(default=True, db_index=True, verbose_name="Activo")
+    intentos_fallidos = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Intentos Fallidos Consecutivos"
+    )
+    bloqueado_hasta = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Bloqueado Hasta"
+    )
+    creado_el = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Cajero"
+        verbose_name_plural = "Cajeros"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.restaurante.nombre})"
+
+    def set_pin(self, raw_pin: str):
+        raw_pin_str = str(raw_pin).strip()
+        if not raw_pin_str.isdigit() or len(raw_pin_str) != 4:
+            raise ValidationError("El PIN debe constar exactamente de 4 dígitos numéricos.")
+        self.pin_hash = make_password(raw_pin_str)
+
+    def check_pin(self, raw_pin: str) -> bool:
+        if not self.activo:
+            return False
+        return check_password(str(raw_pin).strip(), self.pin_hash)
+
+    def is_locked(self) -> bool:
+        if self.bloqueado_hasta and timezone.now() < self.bloqueado_hasta:
+            return True
+        return False
+
+    def segundos_bloqueo_restantes(self) -> int:
+        if not self.is_locked():
+            return 0
+        diff = (self.bloqueado_hasta - timezone.now()).total_seconds()
+        return max(0, int(diff))
+
+    def registrar_intento_fallido(self) -> tuple:
+        """Incrementa intentos fallidos. Al 5to intento, bloquea por 60s."""
+        self.intentos_fallidos += 1
+        bloqueado = False
+        segundos = 0
+        if self.intentos_fallidos >= 5:
+            self.bloqueado_hasta = timezone.now() + timezone.timedelta(seconds=60)
+            bloqueado = True
+            segundos = 60
+        self.save(update_fields=['intentos_fallidos', 'bloqueado_hasta'])
+        return bloqueado, self.intentos_fallidos, segundos
+
+    def limpiar_intentos_fallidos(self):
+        self.intentos_fallidos = 0
+        self.bloqueado_hasta = None
+        self.save(update_fields=['intentos_fallidos', 'bloqueado_hasta'])
+
+
+class TurnoCaja(models.Model):
+    """Registro auditable de apertura, operaciones y arqueo de caja."""
+    ESTADO_ABIERTO = 'ABIERTO'
+    ESTADO_CERRADO = 'CERRADO'
+    ESTADO_FORZADO_SUPERVISOR = 'FORZADO_SUPERVISOR'
+    ESTADO_CHOICES = [
+        (ESTADO_ABIERTO, 'Abierto'),
+        (ESTADO_CERRADO, 'Cerrado'),
+        (ESTADO_FORZADO_SUPERVISOR, 'Forzado por Supervisor'),
+    ]
+
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="turnos_caja",
+        verbose_name="Restaurante"
+    )
+    cajero = models.ForeignKey(
+        Cajero,
+        on_delete=models.PROTECT,
+        related_name="turnos",
+        verbose_name="Cajero"
+    )
+    fecha_apertura = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Apertura")
+    fecha_cierre = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de Cierre")
+    estado = models.CharField(
+        max_length=25,
+        choices=ESTADO_CHOICES,
+        default=ESTADO_ABIERTO,
+        db_index=True,
+        verbose_name="Estado del Turno"
+    )
+    monto_inicial = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Monto Inicial en Efectivo (Apertura)"
+    )
+    monto_final_declarado = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Monto Final Declarado (Cierre)"
+    )
+    diferencia_arqueo = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Diferencia de Arqueo (Sobrante/Faltante)"
+    )
+    observaciones = models.TextField(blank=True, default="", verbose_name="Observaciones")
+    cerrado_por_supervisor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="turnos_forzados_supervisor",
+        verbose_name="Cerrado por Supervisor"
+    )
+    motivo_cierre_forzado = models.TextField(blank=True, default="", verbose_name="Motivo Cierre Forzado")
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Turno de Caja"
+        verbose_name_plural = "Turnos de Caja"
+        ordering = ['-fecha_apertura']
+
+    def __str__(self):
+        return f"Turno #{self.id} - {self.cajero.nombre} ({self.estado})"
+
+    def clean(self):
+        super().clean()
+        if self.estado == self.ESTADO_ABIERTO and self.cajero_id:
+            abiertos = TurnoCaja.all_objects.filter(
+                cajero_id=self.cajero_id,
+                estado=self.ESTADO_ABIERTO
+            )
+            if self.pk:
+                abiertos = abiertos.exclude(pk=self.pk)
+            if abiertos.exists():
+                cajero_nombre = self.cajero.nombre if hasattr(self, 'cajero') and self.cajero else f"ID {self.cajero_id}"
+                raise ValidationError(f"El cajero '{cajero_nombre}' ya posee un turno de caja abierto (Turno #{abiertos.first().id}).")
+
+    def calcular_ventas_efectivo(self) -> Decimal:
+        from django.db.models import Sum
+        ventas = self.ordenes.filter(
+            tipo_pago__iexact='Efectivo'
+        ).exclude(estado=Orden.ESTADO_ELIMINADA).aggregate(total=Sum('monto_total'))['total'] or 0.0
+        return Decimal(str(round(ventas, 2)))
+
+    def calcular_monto_esperado(self) -> Decimal:
+        return Decimal(str(self.monto_inicial)) + self.calcular_ventas_efectivo()
+
+    def calcular_diferencia(self, monto_declarado) -> Decimal:
+        return Decimal(str(monto_declarado)) - self.calcular_monto_esperado()
+
 
 

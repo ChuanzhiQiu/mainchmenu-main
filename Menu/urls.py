@@ -69,6 +69,20 @@ tenant_patterns = [
 
     # Delivery Webhook per Tenant
     path('api/delivery/webhook/<str:plataforma>/', tenant_action(views.delivery_webhook_api), name='tenant_delivery_webhook'),
+
+    # Layer 1 Terminal Pairing Ceremony
+    path('terminal/activar/', tenant_action(views.activar_terminal_view), name='tenant_activar_terminal'),
+    path('terminal/desactivar/', tenant_action(views.desactivar_terminal_view), name='tenant_desactivar_terminal'),
+
+    # Layer 2 Staff PIN & Shift APIs
+    path('api/cajeros/disponibles/', tenant_action(views.api_cajeros_disponibles), name='tenant_api_cajeros_disponibles'),
+    path('api/cajero/desbloquear/', tenant_action(views.api_cajero_desbloquear), name='tenant_api_cajero_desbloquear'),
+    path('api/cajero/bloquear/', tenant_action(views.api_cajero_bloquear), name='tenant_api_cajero_bloquear'),
+    path('api/cajero/estado/', tenant_action(views.api_cajero_estado), name='tenant_api_cajero_estado'),
+    path('api/cajero/desbloquear-supervisor/', tenant_action(views.api_supervisor_desbloquear_cajero), name='tenant_api_supervisor_desbloquear_cajero'),
+    path('api/turno/abrir/', tenant_action(views.api_turno_abrir), name='tenant_api_turno_abrir'),
+    path('api/turno/cerrar/', tenant_action(views.api_turno_cerrar), name='tenant_api_turno_cerrar'),
+    path('api/turno/forzar-cierre/', tenant_action(views.api_turno_forzar_cierre), name='tenant_api_turno_forzar_cierre'),
 ]
 
 
@@ -113,4 +127,16 @@ urlpatterns = [
     path('menu/guardar/', views.guardar_menu, name='guardar_menu'),
     path('menu/eliminar/', views.eliminar_menu, name='eliminar_menu'),
     path('menu/detalles/<int:id>/', views.detalles_menu, name='detalles_menu'),
+
+    # 2.5 Layer 1 & 2 Direct / Fallback Routes
+    path('terminal/activar/', views.activar_terminal_view, name='activar_terminal'),
+    path('terminal/desactivar/', views.desactivar_terminal_view, name='desactivar_terminal'),
+    path('api/cajeros/disponibles/', views.api_cajeros_disponibles, name='api_cajeros_disponibles'),
+    path('api/cajero/desbloquear/', views.api_cajero_desbloquear, name='api_cajero_desbloquear'),
+    path('api/cajero/bloquear/', views.api_cajero_bloquear, name='api_cajero_bloquear'),
+    path('api/cajero/estado/', views.api_cajero_estado, name='api_cajero_estado'),
+    path('api/cajero/desbloquear-supervisor/', views.api_supervisor_desbloquear_cajero, name='api_supervisor_desbloquear_cajero'),
+    path('api/turno/abrir/', views.api_turno_abrir, name='api_turno_abrir'),
+    path('api/turno/cerrar/', views.api_turno_cerrar, name='api_turno_cerrar'),
+    path('api/turno/forzar-cierre/', views.api_turno_forzar_cierre, name='api_turno_forzar_cierre'),
 ]

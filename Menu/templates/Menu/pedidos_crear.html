@@ -1,0 +1,669 @@
+{% extends "Menu/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    {% include "Menu/modal_cajero.html" %}
+
+    <!-- Top POS Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-200 mb-6 gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Punto de Venta (POS)</h1>
+                <p class="text-xs text-slate-500">Toma de pedidos rápida, selección de platos y combos en tiempo real.</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'Menu:inicio' %}" class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition">
+                <i data-lucide="utensils" class="w-4 h-4"></i>
+                <span>Ver Cocina KDS</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Dual-Panel Grid Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- ================================================================= -->
+        <!-- PANEL IZQUIERDO: CATÁLOGO DE PLATOS Y COMBOS (Columnas 1-7/8)      -->
+        <!-- ================================================================= -->
+        <div class="lg:col-span-7 xl:col-span-8 space-y-4">
+            
+            <!-- Barra de Búsqueda y Pestañas de Categoría -->
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                <!-- Buscador por texto -->
+                <div class="relative w-full">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <i data-lucide="search" class="w-4 h-4"></i>
+                    </div>
+                    <input type="text" 
+                           id="buscador" 
+                           placeholder="Buscar por nombre de plato o combo..." 
+                           class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                </div>
+
+                <!-- Pestañas de Filtro Rápido -->
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-semibold scrollbar-thin">
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-900 text-white" data-category="todos">
+                        Todos
+                    </button>
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="combos">
+                        Combos / Promos
+                    </button>
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="entradas">
+                        Entradas
+                    </button>
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="fondos">
+                        Fondos
+                    </button>
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="bebidas">
+                        Bebidas
+                    </button>
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="postres">
+                        Postres
+                    </button>
+                </div>
+            </div>
+
+            <!-- Catálogo de Platos y Menús (Combos) -->
+            <div id="catalogo-container" class="space-y-6">
+
+                <!-- Sección: Combos y Promociones (menus_por_letra) -->
+                {% if menus_por_letra %}
+                <div class="category-block" data-section="combos">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="p-1 rounded bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+                            <i data-lucide="tag" class="w-3.5 h-3.5"></i>
+                            Combos & Menús
+                        </span>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {% for letra, menus in menus_por_letra.items %}
+                            {% for menu in menus %}
+                                <div class="item-card bg-white p-3.5 rounded-xl border border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
+                                     data-type="menu"
+                                     data-id="{{ menu.id }}"
+                                     data-nombre="{{ menu.nombre }}"
+                                     data-precio="{{ menu.precio_menus }}"
+                                     data-category="combos">
+                                    <div>
+                                        <div class="flex items-start justify-between gap-1 mb-1">
+                                            <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">Combo</span>
+                                            <span class="text-sm font-extrabold text-indigo-700 font-mono">${{ menu.precio_menus|floatformat:0 }}</span>
+                                        </div>
+                                        <h4 class="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition leading-snug">{{ menu.nombre }}</h4>
+                                        {% if menu.platos.all %}
+                                            <p class="text-[11px] text-slate-500 mt-1 line-clamp-2">
+                                                {% for p in menu.platos.all %}{{ p.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                            </p>
+                                        {% endif %}
+                                    </div>
+                                    <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                        <span class="text-[11px] text-slate-400">Clic para agregar</span>
+                                        <button type="button" class="btn-add-item p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition">
+                                            <i data-lucide="plus" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Sección: Platos Individuales (platos_por_letra) -->
+                {% if platos_por_letra %}
+                <div class="category-block" data-section="platos">
+                    {% for letra, platos in platos_por_letra.items %}
+                        <div class="letter-group mb-6" data-letter="{{ letra }}">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center">{{ letra }}</span>
+                                <div class="flex-1 h-px bg-slate-200"></div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {% for plato in platos %}
+                                    <div class="item-card bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm hover:border-amber-400 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
+                                         data-type="plato"
+                                         data-id="{{ plato.id }}"
+                                         data-nombre="{{ plato.nombre }}"
+                                         data-precio="{{ plato.valor }}">
+                                        <div>
+                                            <div class="flex items-start justify-between gap-1 mb-1">
+                                                <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">Plato</span>
+                                                <span class="text-sm font-extrabold text-amber-600 font-mono">${{ plato.valor|floatformat:0 }}</span>
+                                            </div>
+                                            <h4 class="font-bold text-slate-900 text-sm group-hover:text-amber-600 transition leading-snug">{{ plato.nombre }}</h4>
+                                        </div>
+                                        <div class="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                                            <span class="text-[11px] text-slate-400">Clic para agregar</span>
+                                            <button type="button" class="btn-add-item p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white transition">
+                                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if not platos_por_letra and not menus_por_letra %}
+                    <!-- Caso borde: Catálogo vacío -->
+                    <div class="bg-white p-12 text-center rounded-xl border border-dashed border-slate-300">
+                        <i data-lucide="package-open" class="w-10 h-10 text-slate-400 mx-auto mb-2"></i>
+                        <h3 class="text-base font-bold text-slate-700">Catálogo Vacío</h3>
+                        <p class="text-xs text-slate-500 mt-1">No hay platos ni combos registrados en la base de datos.</p>
+                    </div>
+                {% endif %}
+
+            </div>
+
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- PANEL DERECHO: RESUMEN DE LA ORDEN / CARRITO (Columnas 8-12)       -->
+        <!-- ================================================================= -->
+        <div class="lg:col-span-5 xl:col-span-4">
+            <div id="panel-resumen-orden" class="bg-white rounded-2xl border border-slate-200 shadow-lg p-5 sticky top-20 space-y-4">
+                
+                <!-- Encabezado del Carrito -->
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="receipt" class="w-5 h-5 text-amber-500"></i>
+                        <h2 class="text-base font-extrabold text-slate-900">Resumen de la Orden</h2>
+                    </div>
+                    <button type="button" 
+                            id="borrar-todo" 
+                            class="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded transition" 
+                            title="Vaciar Carrito">
+                        Vaciar
+                    </button>
+                </div>
+
+                <!-- Formulario de Metadatos de la Orden -->
+                <form id="orden-form" method="POST" action="{% url 'Menu:crear_orden' %}" class="space-y-3">
+                    {% csrf_token %}
+
+                    <!-- Cliente -->
+                    <div>
+                        <label for="cliente" class="block text-xs font-bold text-slate-700 mb-1">
+                            Nombre del Cliente *
+                        </label>
+                        <input type="text" 
+                               id="cliente" 
+                               name="cliente" 
+                               required 
+                               placeholder="Ej: Mesa 4, Juan Pérez..." 
+                               class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    </div>
+
+                    <!-- Canal de Venta y Tipo de Pago en Grid -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label for="canal_venta" class="block text-xs font-bold text-slate-700 mb-1">
+                                Canal de Venta
+                            </label>
+                            <select id="canal_venta" name="canal_venta" class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                                {% for canal, desc in canales_ventas %}
+                                    <option value="{{ canal }}">{{ desc }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="tipo_pago" class="block text-xs font-bold text-slate-700 mb-1">
+                                Tipo de Pago
+                            </label>
+                            <select id="tipo_pago" name="tipo_pago" class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                                {% for tipo, desc in tipos_pago %}
+                                    <option value="{{ tipo }}">{{ desc }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Descuento Monetario en Pesos CLP -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label for="descuento" class="block text-xs font-bold text-slate-700">
+                                Descuento Aplicado (CLP $)
+                            </label>
+                            <span class="text-[10px] text-slate-400">Monto fijo en pesos</span>
+                        </div>
+                        <div class="relative rounded-lg shadow-sm">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 font-mono text-xs">
+                                $
+                            </div>
+                            <input type="number" 
+                                   id="descuento" 
+                                   name="descuento" 
+                                   min="0" 
+                                   step="100" 
+                                   value="0" 
+                                   placeholder="0" 
+                                   class="w-full pl-7 pr-3 py-1.5 text-sm font-mono border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                        </div>
+                    </div>
+
+                    <!-- Lista de Ítems Seleccionados en el Carrito -->
+                    <div class="pt-2">
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                            Ítems Seleccionados
+                        </label>
+                        <div class="max-h-60 overflow-y-auto space-y-1.5 pr-1 divide-y divide-slate-100 scrollbar-thin" id="items-orden">
+                            <ul id="lista-platos-seleccionados" class="space-y-1.5">
+                                <li class="text-xs text-slate-400 italic py-4 text-center" id="empty-cart-msg">
+                                    No hay ítems agregados al pedido aún.
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Desglose Financiero en Tiempo Real -->
+                    <div class="pt-3 border-t border-slate-100 space-y-1.5 text-sm">
+                        <div class="flex justify-between text-slate-600">
+                            <span>Subtotal:</span>
+                            <span class="font-mono font-semibold" id="subtotal-pedido">$0</span>
+                        </div>
+                        <div class="flex justify-between text-rose-600">
+                            <span>Descuento:</span>
+                            <span class="font-mono font-semibold" id="descuento-pedido">-$0</span>
+                        </div>
+                        <div class="flex justify-between text-base font-extrabold text-slate-900 pt-1.5 border-t border-slate-200">
+                            <span>Total a Pagar:</span>
+                            <span class="font-mono text-amber-600 text-lg" id="total-pedido">$0</span>
+                        </div>
+                    </div>
+
+                    <!-- Hidden inputs para compatibilidad con legacy forms si Javascript falla -->
+                    <input type="hidden" name="platos" id="platos_seleccionados">
+                    <input type="hidden" name="menus" id="menus_seleccionados">
+                    <input type="hidden" name="total" id="total_value">
+
+                    <!-- Botón Principal de Envío Asíncrono -->
+                    <div class="pt-3">
+                        <button type="button" 
+                                id="confirmar-orden" 
+                                class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                            <span>Confirmar y Enviar a Cocina</span>
+                        </button>
+                    </div>
+
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Motor de Cálculo Dinámico y Envío Asíncrono POS (F13, F14, F15) -->
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        // Carrito en memoria: { key: { tipo, id, nombre, valor, cantidad } }
+        let cart = {};
+
+        const clienteInput = document.getElementById("cliente");
+        const canalVentaSelect = document.getElementById("canal_venta");
+        const tipoPagoSelect = document.getElementById("tipo_pago");
+        const descuentoInput = document.getElementById("descuento");
+        const listaPlatos = document.getElementById("lista-platos-seleccionados");
+        const subtotalSpan = document.getElementById("subtotal-pedido");
+        const descuentoSpan = document.getElementById("descuento-pedido");
+        const totalSpan = document.getElementById("total-pedido");
+        const confirmarBtn = document.getElementById("confirmar-orden");
+        const borrarTodoBtn = document.getElementById("borrar-todo");
+        const buscadorInput = document.getElementById("buscador");
+        const tabButtons = document.querySelectorAll(".tab-btn");
+
+        function getCsrfToken() {
+            const tokenInput = document.querySelector("[name=csrfmiddlewaretoken]");
+            return tokenInput ? tokenInput.value : "";
+        }
+
+        // 1. Clasificación heurística de categorías para pestañas del cliente
+        function getCategoryForName(name, isCombo) {
+            if (isCombo) return "combos";
+            const lower = name.toLowerCase();
+            if (lower.includes("bebida") || lower.includes("jugo") || lower.includes("agua") || lower.includes("coca") || lower.includes("sprite") || lower.includes("fanta") || lower.includes("cerveza")) {
+                return "bebidas";
+            }
+            if (lower.includes("postre") || lower.includes("flan") || lower.includes("torta") || lower.includes("helado") || lower.includes("queque") || lower.includes("dulce")) {
+                return "postres";
+            }
+            if (lower.includes("entrada") || lower.includes("empanada") || lower.includes("sopa") || lower.includes("consome") || lower.includes("ensalada")) {
+                return "entradas";
+            }
+            return "fondos";
+        }
+
+        // Asignar categorías heurísticas a tarjetas de platos si no la tienen
+        document.querySelectorAll(".item-card").forEach(card => {
+            const type = card.dataset.type;
+            const name = card.dataset.nombre || "";
+            if (!card.dataset.category) {
+                card.dataset.category = getCategoryForName(name, type === "menu");
+            }
+        });
+
+        // 2. Filtro por Pestañas de Categoría
+        tabButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+                tabButtons.forEach(b => {
+                    b.classList.remove("bg-slate-900", "text-white");
+                    b.classList.add("bg-slate-100", "text-slate-700");
+                });
+                btn.classList.remove("bg-slate-100", "text-slate-700");
+                btn.classList.add("bg-slate-900", "text-white");
+
+                const cat = btn.dataset.category;
+                aplicarFiltrosCatalogo(cat, buscadorInput.value.trim().toLowerCase());
+            });
+        });
+
+        // 3. Buscador por texto
+        buscadorInput.addEventListener("input", (e) => {
+            const activeTab = document.querySelector(".tab-btn.bg-slate-900") || tabButtons[0];
+            const cat = activeTab ? activeTab.dataset.category : "todos";
+            aplicarFiltrosCatalogo(cat, e.target.value.trim().toLowerCase());
+        });
+
+        function aplicarFiltrosCatalogo(categoria, query) {
+            document.querySelectorAll(".item-card").forEach(card => {
+                const name = (card.dataset.nombre || "").toLowerCase();
+                const cardCat = card.dataset.category || "fondos";
+
+                const matchCat = (categoria === "todos") || (cardCat === categoria) || (categoria === "combos" && card.dataset.type === "menu");
+                const matchQuery = !query || name.includes(query);
+
+                if (matchCat && matchQuery) {
+                    card.classList.remove("hidden");
+                } else {
+                    card.classList.add("hidden");
+                }
+            });
+
+            // Ocultar grupos de letra vacíos
+            document.querySelectorAll(".letter-group").forEach(grp => {
+                const visible = grp.querySelectorAll(".item-card:not(.hidden)").length > 0;
+                grp.style.display = visible ? "" : "none";
+            });
+            document.querySelectorAll(".category-block").forEach(blk => {
+                const visible = blk.querySelectorAll(".item-card:not(.hidden)").length > 0;
+                blk.style.display = visible ? "" : "none";
+            });
+        }
+
+        // 4. Agregar ítem al carrito
+        document.addEventListener("click", (e) => {
+            const card = e.target.closest(".item-card");
+            if (!card) return;
+
+            const tipo = card.dataset.type;
+            const id = card.dataset.id;
+            const nombre = card.dataset.nombre;
+            const valor = parseFloat(card.dataset.precio) || 0;
+            const key = `${tipo}_${id}`;
+
+            if (cart[key]) {
+                cart[key].cantidad += 1;
+            } else {
+                cart[key] = { tipo, id, nombre, valor, cantidad: 1 };
+            }
+
+            renderCart();
+            calcularTotales();
+        });
+
+        // 5. Controles dentro del carrito (+, -, X)
+        listaPlatos.addEventListener("click", (e) => {
+            const btnInc = e.target.closest(".btn-cart-inc");
+            const btnDec = e.target.closest(".btn-cart-dec");
+            const btnRemove = e.target.closest(".btn-cart-remove");
+
+            if (btnInc) {
+                const key = btnInc.dataset.key;
+                if (cart[key]) cart[key].cantidad += 1;
+            } else if (btnDec) {
+                const key = btnDec.dataset.key;
+                if (cart[key]) {
+                    cart[key].cantidad -= 1;
+                    if (cart[key].cantidad <= 0) delete cart[key];
+                }
+            } else if (btnRemove) {
+                const key = btnRemove.dataset.key;
+                delete cart[key];
+            }
+
+            renderCart();
+            calcularTotales();
+        });
+
+        // 6. Recalcular al cambiar descuento
+        descuentoInput.addEventListener("input", () => {
+            calcularTotales();
+        });
+
+        // 7. Vaciar Carrito
+        borrarTodoBtn.addEventListener("click", () => {
+            cart = {};
+            renderCart();
+            calcularTotales();
+        });
+
+        // 8. Renderizar Carrito en DOM (escapando textos contra XSS)
+        function renderCart() {
+            listaPlatos.innerHTML = "";
+            const keys = Object.keys(cart);
+
+            if (keys.length === 0) {
+                listaPlatos.innerHTML = '<li class="text-xs text-slate-400 italic py-4 text-center" id="empty-cart-msg">No hay ítems agregados al pedido aún.</li>';
+                return;
+            }
+
+            keys.forEach(key => {
+                const item = cart[key];
+                const li = document.createElement("li");
+                li.className = "flex items-center justify-between text-xs py-1.5 gap-2 border-b border-slate-50";
+
+                const leftDiv = document.createElement("div");
+                leftDiv.className = "flex-1 truncate";
+
+                const tag = document.createElement("span");
+                tag.className = item.tipo === "menu" 
+                    ? "font-bold text-indigo-600 mr-1.5 text-[10px] uppercase" 
+                    : "font-bold text-amber-600 mr-1.5 text-[10px] uppercase";
+                tag.textContent = item.tipo === "menu" ? "[Combo]" : "[Plato]";
+
+                const nameSpan = document.createElement("span");
+                nameSpan.className = "font-medium text-slate-800";
+                nameSpan.textContent = item.nombre;
+
+                leftDiv.appendChild(tag);
+                leftDiv.appendChild(nameSpan);
+
+                const controlsDiv = document.createElement("div");
+                controlsDiv.className = "flex items-center gap-1.5 flex-shrink-0";
+
+                const priceSpan = document.createElement("span");
+                priceSpan.className = "font-mono font-semibold text-slate-700 mr-1";
+                priceSpan.textContent = `$${Math.round(item.valor * item.cantidad)}`;
+
+                const btnDec = document.createElement("button");
+                btnDec.type = "button";
+                btnDec.className = "btn-cart-dec w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center";
+                btnDec.dataset.key = key;
+                btnDec.textContent = "-";
+
+                const qtySpan = document.createElement("span");
+                qtySpan.className = "w-4 text-center font-bold text-slate-900";
+                qtySpan.textContent = item.cantidad;
+
+                const btnInc = document.createElement("button");
+                btnInc.type = "button";
+                btnInc.className = "btn-cart-inc w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center justify-center";
+                btnInc.dataset.key = key;
+                btnInc.textContent = "+";
+
+                const btnRem = document.createElement("button");
+                btnRem.type = "button";
+                btnRem.className = "btn-cart-remove text-rose-500 hover:text-rose-700 p-0.5 ml-1";
+                btnRem.dataset.key = key;
+                btnRem.innerHTML = '<i data-lucide="x" class="w-3.5 h-3.5"></i>';
+
+                controlsDiv.appendChild(priceSpan);
+                controlsDiv.appendChild(btnDec);
+                controlsDiv.appendChild(qtySpan);
+                controlsDiv.appendChild(btnInc);
+                controlsDiv.appendChild(btnRem);
+
+                li.appendChild(leftDiv);
+                li.appendChild(controlsDiv);
+                listaPlatos.appendChild(li);
+            });
+
+            if (window.lucide) lucide.createIcons({ root: listaPlatos });
+        }
+
+        // 9. Cálculo dinámico en tiempo real (F14)
+        function calcularTotales() {
+            let subtotal = 0;
+            Object.values(cart).forEach(it => {
+                subtotal += (it.valor * it.cantidad);
+            });
+
+            const descuento = Math.max(0, parseFloat(descuentoInput.value) || 0);
+            const total = Math.max(0, subtotal - descuento);
+
+            subtotalSpan.textContent = `$${Math.round(subtotal)}`;
+            descuentoSpan.textContent = `-$${Math.round(descuento)}`;
+            totalSpan.textContent = `$${Math.round(total)}`;
+
+            // Mantener hidden inputs para fallback
+            const platosDict = {};
+            const menusDict = {};
+            Object.values(cart).forEach(it => {
+                if (it.tipo === "plato") platosDict[it.id] = { cantidad: it.cantidad };
+                if (it.tipo === "menu") menusDict[it.id] = { cantidad: it.cantidad };
+            });
+            const inputPlatos = document.getElementById("platos_seleccionados");
+            const inputMenus = document.getElementById("menus_seleccionados");
+            const inputTotal = document.getElementById("total_value");
+            if (inputPlatos) inputPlatos.value = JSON.stringify(platosDict);
+            if (inputMenus) inputMenus.value = JSON.stringify(menusDict);
+            if (inputTotal) inputTotal.value = total;
+
+            return { subtotal, descuento, total };
+        }
+
+        // 10. Envío Asíncrono de la Orden vía fetch() (F15)
+        confirmarBtn.addEventListener("click", () => {
+            const cliente = clienteInput.value.trim();
+            if (!cliente) {
+                if (window.showToast) {
+                    window.showToast("Por favor ingrese el nombre del cliente.", "warning");
+                } else {
+                    alert("Por favor ingrese el nombre del cliente.");
+                }
+                clienteInput.focus();
+                return;
+            }
+
+            // Guard contra carro vacío (Reviewer Finding 3 / TC-C11)
+            const cartItems = Object.values(cart);
+            if (cartItems.length === 0 || cartItems.every(it => it.cantidad <= 0)) {
+                if (window.showToast) {
+                    window.showToast("Debe agregar al menos un ítem a la orden.", "warning");
+                } else {
+                    alert("Debe agregar al menos un ítem a la orden.");
+                }
+                return;
+            }
+
+            const items = cartItems.map(it => ({
+                tipo: it.tipo,
+                id: parseInt(it.id),
+                cantidad: it.cantidad,
+            }));
+
+            const payload = {
+                cliente: cliente,
+                canal_venta: canalVentaSelect.value || "Local",
+                tipo_pago: tipoPagoSelect.value || "Efectivo",
+                descuento: Math.max(0, parseFloat(descuentoInput.value) || 0),
+                items: items,
+            };
+
+            confirmarBtn.disabled = true;
+            confirmarBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Creando Orden...</span>';
+            if (window.lucide) lucide.createIcons({ root: confirmarBtn });
+
+            fetch("/pedidos/crear/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCsrfToken(),
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify(payload),
+            })
+            .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data })))
+            .then(({ status, ok, data }) => {
+                confirmarBtn.disabled = false;
+                confirmarBtn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Confirmar y Enviar a Cocina</span>';
+                if (window.lucide) lucide.createIcons({ root: confirmarBtn });
+
+                if (ok && data.success) {
+                    if (window.showToast) {
+                        window.showToast(`Orden #${data.orden_id} creada exitosamente ($${data.total}).`, "success");
+                    }
+
+                    // Reset form & cart
+                    cart = {};
+                    renderCart();
+                    calcularTotales();
+                    clienteInput.value = "";
+                    descuentoInput.value = "0";
+
+                    // Notify KDS board if listening in parent / same page
+                    document.body.dispatchEvent(new Event("orderUpdated"));
+                } else {
+                    const errorMsg = (data && data.message) ? data.message : "Error al procesar la orden.";
+                    if (window.showToast) {
+                        window.showToast(errorMsg, "error");
+                    } else {
+                        alert(errorMsg);
+                    }
+                }
+            })
+            .catch(err => {
+                confirmarBtn.disabled = false;
+                confirmarBtn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Confirmar y Enviar a Cocina</span>';
+                if (window.lucide) lucide.createIcons({ root: confirmarBtn });
+                console.error("Error en submit POS:", err);
+                if (window.showToast) {
+                    window.showToast("Error de conexión al enviar el pedido.", "error");
+                }
+            });
+        });
+
+        // Prevenir envío tradicional por Enter en input de cliente
+        const ordenForm = document.getElementById("orden-form");
+        if (ordenForm) {
+            ordenForm.addEventListener("submit", (e) => {
+                e.preventDefault();
+                confirmarBtn.click();
+            });
+        }
+
+    });
+</script>
+{% endblock %}

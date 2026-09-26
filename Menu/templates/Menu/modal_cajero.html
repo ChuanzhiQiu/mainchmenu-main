@@ -1,0 +1,488 @@
+<!-- ======================================================================= -->
+<!-- LAYER 2 CASHIER PIN SECURITY, SCREEN LOCK & SHIFT MODALS (M7)           -->
+<!-- ======================================================================= -->
+
+<!-- Top Bar Cashier & Shift Widget -->
+<div id="cajero-widget-bar" class="bg-slate-900 text-white px-4 py-2 rounded-xl flex items-center justify-between mb-4 shadow-sm border border-slate-800 text-xs">
+    <div class="flex items-center gap-3">
+        <span class="inline-flex items-center gap-1.5 font-bold text-amber-400">
+            <i data-lucide="user-check" class="w-4 h-4"></i>
+            <span id="widget-cajero-nombre">Sin Cajero Asignado</span>
+        </span>
+        <span class="text-slate-500">|</span>
+        <span id="widget-turno-badge" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+            Turno Cerrado
+        </span>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <button type="button" id="btn-abrir-turno" onclick="abrirModalTurno()"
+                class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition flex items-center gap-1">
+            <i data-lucide="play" class="w-3.5 h-3.5"></i>
+            <span>Abrir Turno</span>
+        </button>
+        <button type="button" id="btn-cerrar-turno" onclick="abrirModalCierreTurno()" style="display:none;"
+                class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg transition flex items-center gap-1">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+            <span>Arqueo / Cerrar</span>
+        </button>
+        <button type="button" id="btn-bloquear-pantalla" onclick="bloquearTerminalManual()"
+                class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg transition flex items-center gap-1 border border-slate-700">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            <span>Bloquear (PIN)</span>
+        </button>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL DE BLOQUEO DE PANTALLA Y DESBLOQUEO POR PIN                       -->
+<!-- ======================================================================= -->
+<div id="pantalla-bloqueo-overlay"
+     class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-300"
+     style="display: none;">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+        
+        <!-- Header del Modal -->
+        <div class="bg-slate-900 px-6 py-5 text-center text-white relative">
+            <div class="w-14 h-14 mx-auto rounded-2xl bg-amber-500 flex items-center justify-center text-white mb-2 shadow-lg shadow-amber-500/30">
+                <i data-lucide="lock" class="w-7 h-7"></i>
+            </div>
+            <h2 class="text-xl font-black tracking-tight">Terminal Bloqueada</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Seleccione su perfil de cajero e ingrese su PIN de 4 dígitos</p>
+        </div>
+
+        <div class="p-6 space-y-5">
+            <!-- Selector de Cajero -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Cajero en Turno</label>
+                <div id="cajeros-chips-container" class="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1">
+                    <!-- Dinámico vía API -->
+                    <div class="text-xs text-slate-400 col-span-2 text-center py-2">Cargando cajeros...</div>
+                </div>
+                <input type="hidden" id="selected-cajero-id" value="">
+            </div>
+
+            <!-- Display de PIN (Puntos) -->
+            <div class="text-center">
+                <div id="pin-display-dots" class="flex justify-center items-center gap-3 py-2">
+                    <span class="w-4 h-4 rounded-full border-2 border-slate-300 bg-transparent transition-all dot-pin"></span>
+                    <span class="w-4 h-4 rounded-full border-2 border-slate-300 bg-transparent transition-all dot-pin"></span>
+                    <span class="w-4 h-4 rounded-full border-2 border-slate-300 bg-transparent transition-all dot-pin"></span>
+                    <span class="w-4 h-4 rounded-full border-2 border-slate-300 bg-transparent transition-all dot-pin"></span>
+                </div>
+                <div id="lockout-timer-banner" style="display:none;" class="mt-2 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 py-1.5 px-3 rounded-xl animate-pulse">
+                    Terminal bloqueada. Espere <span id="lockout-seconds">60</span>s...
+                </div>
+                <div id="pin-error-banner" style="display:none;" class="mt-2 text-xs font-semibold text-rose-600">
+                    PIN incorrecto. Intentos restantes: <span id="pin-intentos-left">5</span>
+                </div>
+            </div>
+
+            <!-- Teclado Numérico (Numpad) -->
+            <div class="grid grid-cols-3 gap-2.5 max-w-xs mx-auto">
+                <button type="button" onclick="pressNumpad('1')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">1</button>
+                <button type="button" onclick="pressNumpad('2')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">2</button>
+                <button type="button" onclick="pressNumpad('3')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">3</button>
+                <button type="button" onclick="pressNumpad('4')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">4</button>
+                <button type="button" onclick="pressNumpad('5')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">5</button>
+                <button type="button" onclick="pressNumpad('6')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">6</button>
+                <button type="button" onclick="pressNumpad('7')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">7</button>
+                <button type="button" onclick="pressNumpad('8')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">8</button>
+                <button type="button" onclick="pressNumpad('9')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">9</button>
+                <button type="button" onclick="clearPin()" class="numpad-key py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-2xl text-xs font-bold transition flex items-center justify-center">C</button>
+                <button type="button" onclick="pressNumpad('0')" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-lg font-bold text-slate-800 transition">0</button>
+                <button type="button" onclick="backspacePin()" class="numpad-key py-3.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-2xl text-slate-600 transition flex items-center justify-center">
+                    <i data-lucide="delete" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Botón Desbloquear -->
+            <button type="button" id="btn-submit-unlock" onclick="enviarDesbloqueoPin()"
+                    class="w-full py-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white font-bold rounded-2xl shadow-md transition flex items-center justify-center gap-2">
+                <i data-lucide="unlock" class="w-5 h-5"></i>
+                <span>Desbloquear Terminal</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL DE APERTURA DE TURNO DE CAJA                                      -->
+<!-- ======================================================================= -->
+<div id="modal-apertura-turno" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
+                <i data-lucide="play" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Apertura de Turno de Caja</h3>
+                <p class="text-xs text-slate-500">Ingrese el fondo inicial en efectivo (cambio)</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Monto Inicial en Efectivo ($)</label>
+            <input type="number" id="input-monto-inicial" min="0" step="100" value="50000"
+                   class="w-full px-4 py-3 text-lg font-bold rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+            <p class="text-xs text-slate-400 mt-1">Este monto será la base para el arqueo de caja final.</p>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+            <button type="button" onclick="cerrarModalTurno()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">
+                Cancelar
+            </button>
+            <button type="button" onclick="confirmarAperturaTurno()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition">
+                Confirmar Apertura
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL DE CIERRE Y ARQUEO DE CAJA                                        -->
+<!-- ======================================================================= -->
+<div id="modal-cierre-turno" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                <i data-lucide="calculator" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Arqueo y Cierre de Caja</h3>
+                <p class="text-xs text-slate-500">Conteo físico del efectivo recaudado</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Efectivo Físico Declarado ($)</label>
+            <input type="number" id="input-monto-final-declarado" min="0" step="100" placeholder="0"
+                   class="w-full px-4 py-3 text-lg font-bold rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+            <p class="text-xs text-slate-400 mt-1">Suma del fondo inicial más las ventas en efectivo del turno.</p>
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Observaciones (Opcional)</label>
+            <textarea id="input-observaciones-cierre" rows="2" placeholder="Notas sobre billetes dañados, sobrante/faltante..."
+                      class="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-amber-500 outline-none"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+            <button type="button" onclick="cerrarModalCierreTurno()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">
+                Cancelar
+            </button>
+            <button type="button" onclick="confirmarCierreTurno()" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-xl transition">
+                Ejecutar Arqueo y Cerrar
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- JAVASCRIPT LOGIC FOR SCREEN LOCK, NUMPAD & SHIFTS                       -->
+<!-- ======================================================================= -->
+<script>
+let currentPin = "";
+let lockoutInterval = null;
+let idleTimer = null;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos de inactividad -> auto-bloqueo
+
+// Iniciar detector de inactividad
+function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        bloquearTerminalManual();
+    }, IDLE_TIMEOUT_MS);
+}
+
+['mousedown', 'mousemove', 'keydown', 'touchstart'].forEach(event => {
+    document.addEventListener(event, resetIdleTimer, false);
+});
+
+// Numpad handlers
+function pressNumpad(num) {
+    if (currentPin.length < 4) {
+        currentPin += num;
+        updatePinDisplay();
+    }
+}
+
+function backspacePin() {
+    currentPin = currentPin.slice(0, -1);
+    updatePinDisplay();
+}
+
+function clearPin() {
+    currentPin = "";
+    updatePinDisplay();
+}
+
+function updatePinDisplay() {
+    const dots = document.querySelectorAll('.dot-pin');
+    dots.forEach((dot, idx) => {
+        if (idx < currentPin.length) {
+            dot.classList.add('bg-amber-500', 'border-amber-500', 'scale-110');
+            dot.classList.remove('bg-transparent', 'border-slate-300');
+        } else {
+            dot.classList.remove('bg-amber-500', 'border-amber-500', 'scale-110');
+            dot.classList.add('bg-transparent', 'border-slate-300');
+        }
+    });
+}
+
+// Cargar estado inicial y cajeros
+async function inicializarSeguridadCajero() {
+    try {
+        const resp = await fetch('/api/cajero/estado/');
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.cajero) {
+                document.getElementById('widget-cajero-nombre').textContent = data.cajero.nombre;
+                document.getElementById('selected-cajero-id').value = data.cajero.id;
+            }
+            if (data.turno && data.turno.estado === 'ABIERTO') {
+                const badge = document.getElementById('widget-turno-badge');
+                badge.textContent = `Turno #${data.turno.id} Abierto`;
+                badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                document.getElementById('btn-abrir-turno').style.display = 'none';
+                document.getElementById('btn-cerrar-turno').style.display = 'inline-flex';
+            }
+            if (data.bloqueado) {
+                mostrarPantallaBloqueo();
+            }
+        }
+    } catch (e) {
+        console.error("Error al consultar estado de cajero:", e);
+    }
+}
+
+async function cargarCajerosDisponibles() {
+    const container = document.getElementById('cajeros-chips-container');
+    try {
+        const resp = await fetch('/api/cajeros/disponibles/');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        container.innerHTML = '';
+        if (data.cajeros.length === 0) {
+            container.innerHTML = '<div class="text-xs text-slate-400 col-span-2 text-center py-2">No hay cajeros activos registrados. Contacte al administrador.</div>';
+            return;
+        }
+
+        const selectedId = document.getElementById('selected-cajero-id').value;
+        data.cajeros.forEach((cajero, idx) => {
+            const isSelected = selectedId ? (selectedId == cajero.id) : (idx === 0);
+            if (isSelected) {
+                document.getElementById('selected-cajero-id').value = cajero.id;
+            }
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = `p-2 rounded-xl text-left border text-xs font-bold transition flex items-center justify-between ${
+                isSelected ? 'bg-amber-50 border-amber-400 text-amber-900 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+            }`;
+            chip.innerHTML = `
+                <span class="truncate">${cajero.nombre}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${cajero.codigo || ''}</span>
+            `;
+            chip.onclick = () => {
+                document.querySelectorAll('#cajeros-chips-container button').forEach(b => {
+                    b.className = 'p-2 rounded-xl text-left border text-xs font-bold transition flex items-center justify-between bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
+                });
+                chip.className = 'p-2 rounded-xl text-left border text-xs font-bold transition flex items-center justify-between bg-amber-50 border-amber-400 text-amber-900 shadow-sm';
+                document.getElementById('selected-cajero-id').value = cajero.id;
+                clearPin();
+            };
+            container.appendChild(chip);
+        });
+    } catch (e) {
+        console.error("Error cargando cajeros:", e);
+    }
+}
+
+function mostrarPantallaBloqueo() {
+    cargarCajerosDisponibles();
+    clearPin();
+    document.getElementById('pantalla-bloqueo-overlay').style.display = 'flex';
+}
+
+async function bloquearTerminalManual() {
+    try {
+        await fetch('/api/cajero/bloquear/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrfToken()}
+        });
+    } catch (e) {}
+    mostrarPantallaBloqueo();
+}
+
+async function enviarDesbloqueoPin() {
+    const cajeroId = document.getElementById('selected-cajero-id').value;
+    if (!cajeroId) {
+        alert("Debe seleccionar un cajero.");
+        return;
+    }
+    if (currentPin.length !== 4) {
+        alert("Debe ingresar un PIN de 4 dígitos.");
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/cajero/desbloquear/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                cajero_id: cajeroId,
+                pin: currentPin
+            })
+        });
+
+        const data = await resp.json();
+        if (resp.status === 200 && data.success) {
+            document.getElementById('pantalla-bloqueo-overlay').style.display = 'none';
+            document.getElementById('widget-cajero-nombre').textContent = data.cajero.nombre;
+            if (data.turno && data.turno.abierto) {
+                const badge = document.getElementById('widget-turno-badge');
+                badge.textContent = `Turno #${data.turno.id} Abierto`;
+                badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+                document.getElementById('btn-abrir-turno').style.display = 'none';
+                document.getElementById('btn-cerrar-turno').style.display = 'inline-flex';
+            }
+            clearPin();
+        } else if (resp.status === 423) {
+            iniciarLockoutTimer(data.segundos_restantes || 60);
+        } else {
+            const errBanner = document.getElementById('pin-error-banner');
+            document.getElementById('pin-intentos-left').textContent = data.intentos_restantes !== undefined ? data.intentos_restantes : '0';
+            errBanner.style.display = 'block';
+            clearPin();
+        }
+    } catch (e) {
+        console.error("Error al desbloquear:", e);
+    }
+}
+
+function iniciarLockoutTimer(segundos) {
+    clearInterval(lockoutInterval);
+    const banner = document.getElementById('lockout-timer-banner');
+    const secSpan = document.getElementById('lockout-seconds');
+    banner.style.display = 'block';
+    secSpan.textContent = segundos;
+    document.getElementById('btn-submit-unlock').disabled = true;
+
+    lockoutInterval = setInterval(() => {
+        segundos -= 1;
+        secSpan.textContent = segundos;
+        if (segundos <= 0) {
+            clearInterval(lockoutInterval);
+            banner.style.display = 'none';
+            document.getElementById('btn-submit-unlock').disabled = false;
+        }
+    }, 1000);
+}
+
+// Control de Turnos
+function abrirModalTurno() {
+    document.getElementById('modal-apertura-turno').style.display = 'flex';
+}
+function cerrarModalTurno() {
+    document.getElementById('modal-apertura-turno').style.display = 'none';
+}
+
+async function confirmarAperturaTurno() {
+    const monto = document.getElementById('input-monto-inicial').value;
+    try {
+        const resp = await fetch('/api/turno/abrir/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({monto_inicial: monto})
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            cerrarModalTurno();
+            const badge = document.getElementById('widget-turno-badge');
+            badge.textContent = `Turno #${data.turno.id} Abierto`;
+            badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+            document.getElementById('btn-abrir-turno').style.display = 'none';
+            document.getElementById('btn-cerrar-turno').style.display = 'inline-flex';
+            alert(data.message);
+        } else {
+            alert(data.error || "Error al abrir turno.");
+        }
+    } catch (e) {
+        console.error("Error abriendo turno:", e);
+    }
+}
+
+function abrirModalCierreTurno() {
+    document.getElementById('modal-cierre-turno').style.display = 'flex';
+}
+function cerrarModalCierreTurno() {
+    document.getElementById('modal-cierre-turno').style.display = 'none';
+}
+
+async function confirmarCierreTurno() {
+    const declarado = document.getElementById('input-monto-final-declarado').value;
+    const observaciones = document.getElementById('input-observaciones-cierre').value;
+
+    if (!declarado) {
+        alert("Debe ingresar el monto de efectivo declarado.");
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/turno/cerrar/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                monto_final_declarado: declarado,
+                observaciones: observaciones
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            cerrarModalCierreTurno();
+            const r = data.resumen;
+            alert(`Turno cerrado exitosamente.\nVentas Efectivo: $${r.ventas_efectivo}\nMonto Esperado: $${r.monto_esperado}\nDeclarado: $${r.monto_declarado}\nDiferencia: $${r.diferencia}`);
+            const badge = document.getElementById('widget-turno-badge');
+            badge.textContent = "Turno Cerrado";
+            badge.className = "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30";
+            document.getElementById('btn-abrir-turno').style.display = 'inline-flex';
+            document.getElementById('btn-cerrar-turno').style.display = 'none';
+        } else {
+            alert(data.error || "Error al cerrar turno.");
+        }
+    } catch (e) {
+        console.error("Error cerrando turno:", e);
+    }
+}
+
+function getCsrfToken() {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, 10) === ('csrftoken=')) {
+                cookieValue = decodeURIComponent(cookie.substring(10));
+                break;
+            }
+        }
+    }
+    return cookieValue || document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    inicializarSeguridadCajero();
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+});
+</script>
