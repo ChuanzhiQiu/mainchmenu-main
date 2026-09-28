@@ -70,37 +70,58 @@ class OrdenViewSet(viewsets.ReadOnlyModelViewSet):
     def _resolver_cajero(self, restaurante):
         request = self.request
         if not hasattr(request, "session"):
-            return None
+            raise PagoValidationError(
+                "Se requiere un cajero y un turno de caja abierto para registrar el cobro."
+            )
         cajero_id = request.session.get("cajero_id")
         if not cajero_id:
-            return None
+            raise PagoValidationError(
+                "Se requiere un cajero y un turno de caja abierto para registrar el cobro."
+            )
         try:
-            return Cajero.all_objects.filter(
+            cajero = Cajero.all_objects.filter(
                 id=int(cajero_id), restaurante=restaurante, activo=True
             ).first()
         except (TypeError, ValueError):
-            return None
+            cajero = None
+        if cajero is None:
+            raise PagoValidationError(
+                "El cajero no pertenece al restaurante activo o no se encuentra activo."
+            )
+        return cajero
 
     def _resolver_turno(self, restaurante, cajero):
         request = self.request
         if not hasattr(request, "session"):
-            return None
+            raise PagoValidationError(
+                "Se requiere un cajero y un turno de caja abierto para registrar el cobro."
+            )
         turno_id = request.session.get("turno_id")
+        turno = None
         if turno_id:
             try:
                 turno = TurnoCaja.all_objects.filter(
                     id=int(turno_id), restaurante=restaurante
                 ).first()
-                if turno:
-                    # El servicio validará que esté abierto y pertenezca a la orden/cajero.
-                    return turno
             except (TypeError, ValueError):
-                pass
-        if cajero:
-            return TurnoCaja.all_objects.filter(
+                turno = None
+            if turno is None:
+                raise PagoValidationError(
+                    "El turno de caja no pertenece al restaurante activo."
+                )
+        if turno is None and cajero is not None:
+            turno = TurnoCaja.all_objects.filter(
                 restaurante=restaurante, cajero=cajero, estado=TurnoCaja.ESTADO_ABIERTO
             ).first()
-        return None
+        if turno is None:
+            raise PagoValidationError(
+                "Se requiere un cajero y un turno de caja abierto para registrar el cobro."
+            )
+        if turno.estado != TurnoCaja.ESTADO_ABIERTO:
+            raise PagoValidationError(
+                f"El turno de caja #{turno.id} no está abierto (estado actual: {turno.estado})."
+            )
+        return turno
 
     @action(detail=True, methods=["post"], url_path="registrar-pago")
     def registrar_pago(self, request, pk=None, **kwargs):
@@ -112,10 +133,11 @@ class OrdenViewSet(viewsets.ReadOnlyModelViewSet):
         data = serializer.validated_data
 
         restaurante = get_current_restaurante(request)
-        cajero = self._resolver_cajero(restaurante)
-        turno = self._resolver_turno(restaurante, cajero)
 
         try:
+            cajero = self._resolver_cajero(restaurante)
+            turno = self._resolver_turno(restaurante, cajero)
+
             resultado = registrar_pago(
                 orden=orden,
                 metodo_pago=data["metodo_pago"],

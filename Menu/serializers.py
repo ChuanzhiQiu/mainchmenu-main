@@ -91,6 +91,7 @@ class RegistroPagoSerializer(serializers.Serializer):
     propina = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
+        min_value=Decimal("0.00"),
         default=Decimal("0.00"),
         required=False,
     )

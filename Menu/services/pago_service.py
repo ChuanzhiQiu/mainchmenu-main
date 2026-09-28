@@ -95,9 +95,9 @@ def registrar_pago(
     :param orden: Instancia o ID de la Orden a pagar.
     :param metodo_pago: Método de pago (ej. Efectivo, Débito, Crédito, Transferencia).
     :param monto: Monto abonado en este pago.
-    :param propina: Propina opcional asociada al pago.
-    :param cajero: Cajero que registra el pago (opcional).
-    :param turno: Turno de caja vigente (opcional, pero si se entrega debe estar abierto).
+    :param propina: Propina opcional asociada al pago (no puede ser negativa).
+    :param cajero: Cajero que registra el pago (obligatorio en POS).
+    :param turno: Turno de caja vigente (obligatorio en POS y debe estar abierto).
     :param referencia_transaccion: Referencia externa opcional de la transacción.
     :param restaurante: Restaurante esperado para validación cruzada (opcional).
     :return: Diccionario con pago, total_pagado, saldo_pendiente, orden_completada y cambio.
@@ -113,17 +113,23 @@ def registrar_pago(
         restaurante=restaurante,
     )
 
-    # 3. Validar estado del turno de caja.
-    if turno is not None and turno.estado != TurnoCaja.ESTADO_ABIERTO:
+    # 3. Cajero y turno de caja son obligatorios para registrar un cobro en el POS.
+    if cajero is None or turno is None:
+        raise PagoValidationError(
+            "Se requiere un cajero y un turno de caja abierto para registrar el cobro."
+        )
+
+    # 4. Validar estado del turno de caja.
+    if turno.estado != TurnoCaja.ESTADO_ABIERTO:
         raise PagoValidationError(
             f"El turno de caja #{turno.id} no está abierto (estado actual: {turno.estado})."
         )
 
-    # 4. Validar estado de la orden.
+    # 5. Validar estado de la orden.
     if orden.estado == Orden.ESTADO_ELIMINADA:
         raise PagoValidationError("No se puede pagar una orden cancelada/eliminada.")
 
-    # 4. Normalizar el total de la orden (puede llegar como Decimal o float).
+    # 6. Normalizar el total de la orden (puede llegar como Decimal o float).
     orden_monto_total = _to_decimal(orden.monto_total)
 
     total_pagado_previo = (
@@ -137,13 +143,15 @@ def registrar_pago(
             f"(pagado: {total_pagado_previo}, total: {orden_monto_total})."
         )
 
-    # 5. Normalizar montos y validar monto positivo.
+    # 7. Normalizar montos y validar monto positivo y propina no negativa.
     monto_decimal = _to_decimal(monto)
     propina_decimal = _to_decimal(propina)
     if monto_decimal <= Decimal("0.00"):
         raise PagoValidationError("El monto del pago debe ser mayor a 0.")
+    if propina_decimal < Decimal("0.00"):
+        raise PagoValidationError("La propina no puede ser negativa.")
 
-    # 6. Crear el registro de pago.
+    # 8. Crear el registro de pago.
     pago = Pago.objects.create(
         restaurante_id=tenant_id,
         orden=orden,
@@ -155,7 +163,7 @@ def registrar_pago(
         turno=turno,
     )
 
-    # 7. Calcular saldos y cambio antes de mutar el estado de la orden.
+    # 9. Calcular saldos y cambio antes de mutar el estado de la orden.
     total_pagado = total_pagado_previo + monto_decimal
     orden_completada = total_pagado >= orden_monto_total
     saldo_pendiente = max(Decimal("0.00"), orden_monto_total - total_pagado)
@@ -165,7 +173,7 @@ def registrar_pago(
     if metodo_normalizado == "efectivo":
         cambio = max(Decimal("0.00"), total_pagado - orden_monto_total)
 
-    # 8. Actualizar la orden y liberar la mesa si el saldo quedó cubierto.
+    # 10. Actualizar la orden y liberar la mesa si el saldo quedó cubierto.
     if orden_completada:
         orden.estado = Orden.ESTADO_COMPLETADA
         orden.save(update_fields=["estado"])
