@@ -78,8 +78,8 @@ class TestC11EmpiricalChallengerM3POS(TestCase, E2EBaseMixin):
         p = Plato.objects.create(nombre="Plato Fraccional", valor=1990.555)
         orden = Orden.objects.create(cliente="Cliente Centavos", descuento=190.222)
         OrdenItem.objects.create(orden=orden, plato=p, cantidad=1)
-        # Expected: round(1990.555 - 190.222, 2) = round(1800.333, 2) = 1800.33
-        self.assertEqual(orden.calcular_total(), 1800.33)
+        # Expected with DecimalField(2): 1990.555 -> 1990.56, 190.222 -> 190.22, total = 1800.34
+        self.assertEqual(orden.calcular_total(), 1800.34)
 
     def test_calcular_total_negative_discount_does_not_inflate_total(self):
         """Adversarial: negative discount (-$2,000) on model must not inflate total above subtotal ($6,000)."""

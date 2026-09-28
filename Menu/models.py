@@ -79,6 +79,14 @@ class Plato(models.Model):
         decimal_places=2,
         verbose_name="Precio Base / Salón Local ($)"
     )
+    categoria = models.ForeignKey(
+        'Categoria',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='platos',
+        verbose_name="Categoría"
+    )
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -288,6 +296,15 @@ class Orden(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_EN_CURSO)
     tipo_pago = models.CharField(max_length=20, choices=PAGO_CHOICES, blank=True, null=True)
     canal_venta = models.CharField(max_length=20, choices=CANAL_CHOICES, default=CANAL_LOCAL)
+    tipo_servicio = models.CharField(max_length=20, default='mostrador', verbose_name="Tipo de Servicio")
+    mesa = models.ForeignKey(
+        'Mesa',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ordenes',
+        verbose_name="Mesa"
+    )
     monto_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     descuento = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), blank=True)
     order_id_externo = models.CharField(
@@ -1207,3 +1224,253 @@ class ConfiguracionRestaurante(models.Model):
         """Obtiene la clave para un proveedor específico (ej. ubereats, pedidosya, rappi)."""
         creds = self.get_credenciales()
         return creds.get(proveedor.lower(), "")
+
+
+# ==============================================================================
+# FASE 2: PAGOS DESACOPLADOS, SALÓN/MESAS Y CATEGORIZACIÓN DE CATÁLOGO
+# ==============================================================================
+
+class Area(models.Model):
+    """
+    Área física del salón (ej. Terraza, Barra, Comedor Principal) para agrupar mesas.
+    El soporte de salón es opcional por local.
+    """
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='areas',
+        verbose_name="Restaurante"
+    )
+    nombre = models.CharField(max_length=100, verbose_name="Nombre")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Área de Salón"
+        verbose_name_plural = "Áreas de Salón"
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.restaurante.nombre})"
+
+    def clean(self):
+        super().clean()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class Mesa(models.Model):
+    """
+    Mesa opcional del salón vinculada a un área. Permite servicio en salón sin
+    modificar el flujo de mostrador/delivery.
+    """
+    ESTADO_LIBRE = 'libre'
+    ESTADO_OCUPADA = 'ocupada'
+    ESTADO_RESERVADA = 'reservada'
+    ESTADO_CHOICES = [
+        (ESTADO_LIBRE, 'Libre'),
+        (ESTADO_OCUPADA, 'Ocupada'),
+        (ESTADO_RESERVADA, 'Reservada'),
+    ]
+
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='mesas',
+        verbose_name="Restaurante"
+    )
+    area = models.ForeignKey(
+        Area,
+        on_delete=models.CASCADE,
+        related_name='mesas',
+        verbose_name="Área"
+    )
+    numero = models.CharField(max_length=20, verbose_name="Número de Mesa")
+    capacidad = models.IntegerField(default=4, verbose_name="Capacidad")
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADO_CHOICES,
+        default=ESTADO_LIBRE,
+        verbose_name="Estado"
+    )
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Mesa"
+        verbose_name_plural = "Mesas"
+        ordering = ['area', 'numero']
+
+    def __str__(self):
+        return f"Mesa {self.numero} ({self.restaurante.nombre})"
+
+    def clean(self):
+        super().clean()
+        if self.area_id and hasattr(self, 'area') and self.area:
+            if not self.restaurante_id:
+                self.restaurante = self.area.restaurante
+            elif self.restaurante_id != self.area.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El área '{self.area.nombre}' pertenece a "
+                    f"'{self.area.restaurante.nombre}', no al restaurante '{self.restaurante.nombre}'."
+                )
+        elif not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+
+    def save(self, *args, **kwargs):
+        if self.area_id and hasattr(self, 'area') and self.area:
+            if not self.restaurante_id:
+                self.restaurante = self.area.restaurante
+        elif not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class Categoria(models.Model):
+    """
+    Categorización opcional del catálogo de platos (ej. Entradas, Fondos, Bebestibles).
+    """
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='categorias',
+        verbose_name="Restaurante"
+    )
+    nombre = models.CharField(max_length=100, verbose_name="Nombre")
+    orden = models.PositiveIntegerField(default=0, verbose_name="Orden")
+    activo = models.BooleanField(default=True, verbose_name="Activo")
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Categoría"
+        verbose_name_plural = "Categorías"
+        ordering = ['orden', 'nombre']
+
+    def __str__(self):
+        return self.nombre
+
+    def clean(self):
+        super().clean()
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+
+    def save(self, *args, **kwargs):
+        if not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class Pago(models.Model):
+    """
+    Registro desacoplado de pagos asociados a una orden. Soporta múltiples métodos
+    de pago por orden y trazabilidad por cajero y turno de caja.
+    """
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='pagos',
+        verbose_name="Restaurante"
+    )
+    orden = models.ForeignKey(
+        Orden,
+        on_delete=models.CASCADE,
+        related_name='pagos',
+        verbose_name="Orden"
+    )
+    metodo_pago = models.CharField(max_length=50, verbose_name="Método de Pago")
+    monto = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Monto")
+    propina = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Propina"
+    )
+    referencia_transaccion = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="Referencia de Transacción"
+    )
+    cajero = models.ForeignKey(
+        Cajero,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pagos',
+        verbose_name="Cajero"
+    )
+    turno = models.ForeignKey(
+        TurnoCaja,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pagos',
+        verbose_name="Turno de Caja"
+    )
+    creado_el = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+
+    objects = TenantManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Pago"
+        verbose_name_plural = "Pagos"
+        ordering = ['-creado_el']
+
+    def __str__(self):
+        return f"Pago #{self.id} - {self.metodo_pago} (${self.monto})"
+
+    def clean(self):
+        super().clean()
+        if self.orden_id and hasattr(self, 'orden') and self.orden:
+            if not self.restaurante_id:
+                self.restaurante = self.orden.restaurante
+            elif self.restaurante_id != self.orden.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: La orden #{self.orden.id} pertenece a "
+                    f"'{self.orden.restaurante.nombre}', no al restaurante '{self.restaurante.nombre}'."
+                )
+
+        if self.cajero_id and hasattr(self, 'cajero') and self.cajero:
+            if not self.restaurante_id:
+                self.restaurante = self.cajero.restaurante
+            elif self.restaurante_id != self.cajero.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El cajero '{self.cajero.nombre}' pertenece a "
+                    f"'{self.cajero.restaurante.nombre}', no al restaurante '{self.restaurante.nombre}'."
+                )
+
+        if self.turno_id and hasattr(self, 'turno') and self.turno:
+            if not self.restaurante_id:
+                self.restaurante = self.turno.restaurante
+            elif self.restaurante_id != self.turno.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El turno #{self.turno.id} pertenece a "
+                    f"'{self.turno.restaurante.nombre}', no al restaurante '{self.restaurante.nombre}'."
+                )
+
+    def save(self, *args, **kwargs):
+        if self.orden_id and hasattr(self, 'orden') and self.orden:
+            if not self.restaurante_id:
+                self.restaurante = self.orden.restaurante
+        elif not self.restaurante_id:
+            self.restaurante_id = get_default_restaurante()
+        self.clean()
+        super().save(*args, **kwargs)
