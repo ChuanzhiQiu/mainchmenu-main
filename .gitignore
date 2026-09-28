@@ -26,3 +26,8 @@ local_settings.py
 # Ignorar archivos de personalización de Windows
 desktop.ini
 
+# Ignorar bases de datos locales y artefactos temporales
+*.sqlite3
+*.sqlite3.bak
+*.diff
+
