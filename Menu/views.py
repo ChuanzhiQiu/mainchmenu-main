@@ -276,24 +276,27 @@ def confirmar_orden(request, id):
         if isinstance(data, dict) and "descuento" in data and data.get("descuento") is not None:
             raw_descuento = data.get("descuento")
         else:
-            raw_descuento = orden.descuento if orden.descuento is not None else 0.0
+            raw_descuento = orden.descuento if orden.descuento is not None else Decimal('0.00')
 
         try:
-            descuento_num = float(raw_descuento)
-            if math.isnan(descuento_num) or math.isinf(descuento_num) or descuento_num < 0.0:
-                descuento_num = 0.0
-        except (ValueError, TypeError):
-            descuento_num = float(orden.descuento or 0.0)
+            descuento_num = Decimal(str(raw_descuento))
+            if not descuento_num.is_finite() or descuento_num < 0:
+                descuento_num = Decimal('0.00')
+        except (ValueError, TypeError, InvalidOperation):
+            descuento_num = Decimal(str(orden.descuento or 0))
 
-        orden.descuento = round(max(0.0, descuento_num), 2)
+        orden.descuento = max(Decimal('0.00'), descuento_num)
 
         # 5. Idempotencia de timestamp: no sobreescribir si ya estaba completada (TC-C04-02)
         if not orden.fecha_completada:
             orden.fecha_completada = timezone.now()
 
         # 6. Recalcular total con descuento en CLP
-        subtotal = sum(item.subtotal for item in orden.items.all())
-        orden.monto_total = max(0.0, round(subtotal - orden.descuento, 2))
+        subtotal = sum((item.subtotal for item in orden.items.all()), Decimal('0.00'))
+        orden.monto_total = max(
+            Decimal('0.00'),
+            (subtotal - orden.descuento).quantize(Decimal('0.01'))
+        )
 
         # Guardar estado de la orden
         orden.save(update_fields=["estado", "tipo_pago", "descuento", "monto_total", "fecha_completada"])

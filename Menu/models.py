@@ -1,5 +1,4 @@
-from decimal import Decimal
-import math
+from decimal import Decimal, InvalidOperation
 import uuid
 from django.db import models
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
@@ -75,7 +74,11 @@ class Plato(models.Model):
         default=get_default_restaurante
     )
     nombre = models.CharField(max_length=100)
-    valor = models.FloatField(verbose_name="Precio Base / Salón Local ($)")
+    valor = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="Precio Base / Salón Local ($)"
+    )
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -84,6 +87,7 @@ class Plato(models.Model):
         base_manager_name = 'all_objects'
         verbose_name = "Plato"
         verbose_name_plural = "Platos"
+        unique_together = ('restaurante', 'nombre')
 
     def __str__(self):
         return self.nombre
@@ -124,6 +128,12 @@ class PlatoPrecioCanal(models.Model):
         ('Delivery', 'Delivery Propio'),
     ]
 
+    restaurante = models.ForeignKey(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='precios_canales',
+        verbose_name="Restaurante"
+    )
     plato = models.ForeignKey(
         Plato,
         on_delete=models.CASCADE,
@@ -136,7 +146,9 @@ class PlatoPrecioCanal(models.Model):
         verbose_name="SKU Externo en Plataforma",
         help_text="Identificador único en Uber Eats o Pedidos Ya para sincronización automática."
     )
-    precio = models.FloatField(
+    precio = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
         verbose_name="Precio en Canal ($)",
         help_text="Precio con recargo de plataforma o precio específico para este canal."
     )
@@ -153,6 +165,24 @@ class PlatoPrecioCanal(models.Model):
     def __str__(self):
         return f"{self.plato.nombre} [{self.canal}]: ${self.precio} (SKU: {self.sku_externo or 'N/A'})"
 
+    def clean(self):
+        super().clean()
+        if self.plato_id and hasattr(self, 'plato') and self.plato:
+            if not self.restaurante_id:
+                self.restaurante = self.plato.restaurante
+            elif self.restaurante_id != self.plato.restaurante_id:
+                raise ValidationError(
+                    f"Contaminación cross-tenant detectada: El plato '{self.plato.nombre}' pertenece a "
+                    f"'{self.plato.restaurante.nombre}', no al restaurante '{self.restaurante.nombre}'."
+                )
+
+    def save(self, *args, **kwargs):
+        if self.plato_id and hasattr(self, 'plato') and self.plato:
+            if not self.restaurante_id:
+                self.restaurante = self.plato.restaurante
+        self.clean()
+        super().save(*args, **kwargs)
+
 
 # Modelo para representar una promoción (colaciones, combos, etc.)
 class Menu(models.Model):
@@ -164,7 +194,7 @@ class Menu(models.Model):
     )
     nombre = models.CharField(max_length=100)
     platos = models.ManyToManyField(Plato)
-    precio_menus = models.FloatField()
+    precio_menus = models.DecimalField(max_digits=12, decimal_places=2)
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -258,8 +288,8 @@ class Orden(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_EN_CURSO)
     tipo_pago = models.CharField(max_length=20, choices=PAGO_CHOICES, blank=True, null=True)
     canal_venta = models.CharField(max_length=20, choices=CANAL_CHOICES, default=CANAL_LOCAL)
-    monto_total = models.FloatField(default=0.0)
-    descuento = models.FloatField(default=0.0, blank=True)
+    monto_total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    descuento = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), blank=True)
     order_id_externo = models.CharField(
         max_length=100,
         blank=True,
@@ -309,17 +339,21 @@ class Orden(models.Model):
         return self.canal_venta in [self.CANAL_UBER_EATS, self.CANAL_PEDIDOS_YA, self.CANAL_DELIVERY]
 
     def calcular_total(self):
-        subtotal = sum(item.subtotal for item in self.items.all())
+        subtotal = sum(
+            (item.subtotal for item in self.items.all()),
+            Decimal('0.00')
+        )
         try:
-            raw_desc = float(self.descuento or 0.0)
-            if math.isnan(raw_desc) or math.isinf(raw_desc) or raw_desc < 0.0:
-                descuento = 0.0
+            raw_desc = Decimal(str(self.descuento or 0))
+            if not raw_desc.is_finite() or raw_desc < 0:
+                descuento = Decimal('0.00')
             else:
                 descuento = raw_desc
-        except (ValueError, TypeError):
-            descuento = 0.0
+        except (ValueError, TypeError, InvalidOperation):
+            descuento = Decimal('0.00')
         total_con_descuento = subtotal - descuento
-        return max(round(total_con_descuento, 2), 0.0)
+        total = max(total_con_descuento, Decimal('0.00'))
+        return round(float(total), 2)
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -332,17 +366,21 @@ class Orden(models.Model):
     def save(self, *args, **kwargs):
         if not self.restaurante_id:
             self.restaurante_id = get_default_restaurante()
+        # Límite máximo representable en DecimalField(max_digits=12, decimal_places=2)
+        max_descuento = Decimal('9999999999.99')
         if self.descuento is None:
-            self.descuento = 0.0
+            self.descuento = Decimal('0.00')
         else:
             try:
-                val = float(self.descuento)
-                if math.isnan(val) or math.isinf(val) or val < 0.0:
-                    self.descuento = 0.0
+                val = Decimal(str(self.descuento))
+                if not val.is_finite() or val < 0:
+                    self.descuento = Decimal('0.00')
+                elif val > max_descuento:
+                    self.descuento = max_descuento
                 else:
                     self.descuento = val
-            except (ValueError, TypeError):
-                self.descuento = 0.0
+            except (ValueError, TypeError, InvalidOperation):
+                self.descuento = Decimal('0.00')
         if self.pk:
             self.monto_total = self.calcular_total() 
         super().save(*args, **kwargs)
@@ -364,8 +402,10 @@ class OrdenItem(models.Model):
     plato = models.ForeignKey(Plato, on_delete=models.CASCADE, null=True, blank=True)
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, null=True, blank=True)
     cantidad = models.PositiveIntegerField(default=1)
-    precio_unitario = models.FloatField(
-        default=0.0,
+    precio_unitario = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
         verbose_name="Precio Unitario Venta ($)",
         help_text="Precio congelado al momento de la venta respetando Price Tier del canal."
     )
@@ -536,6 +576,7 @@ class Insumo(models.Model):
         verbose_name = "Insumo"
         verbose_name_plural = "Insumos"
         ordering = ['nombre']
+        unique_together = ('restaurante', 'codigo')
         constraints = [
             models.UniqueConstraint(
                 fields=['restaurante', 'codigo'],
@@ -960,6 +1001,7 @@ class Cajero(models.Model):
         verbose_name = "Cajero"
         verbose_name_plural = "Cajeros"
         ordering = ["nombre"]
+        unique_together = ('restaurante', 'codigo_empleado')
 
     def __str__(self):
         return f"{self.nombre} ({self.restaurante.nombre})"
@@ -1106,4 +1148,62 @@ class TurnoCaja(models.Model):
         return Decimal(str(monto_declarado)) - self.calcular_monto_esperado()
 
 
+class ConfiguracionRestaurante(models.Model):
+    """
+    Configuración de integraciones de delivery y credenciales sensibles por restaurante (Milestone M8).
+    Almacena API keys de UberEats, PedidosYa, Rappi y webhooks cifrados en reposo mediante Fernet.
+    """
+    restaurante = models.OneToOneField(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name='configuracion',
+        verbose_name="Restaurante"
+    )
+    credenciales_cifradas = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Credenciales Cifradas (Fernet Payload)"
+    )
+    permite_delivery = models.BooleanField(
+        default=True,
+        verbose_name="Permitir Integraciones Delivery"
+    )
+    actualizado_en = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Última Actualización"
+    )
 
+    objects = models.Manager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Configuración de Restaurante"
+        verbose_name_plural = "Configuraciones de Restaurantes"
+
+    def __str__(self):
+        return f"Configuración - {self.restaurante.nombre}"
+
+    def get_credenciales(self) -> dict:
+        """Descifra y retorna el diccionario de credenciales sensibles en memoria."""
+        from Menu.encryption import decrypt_data
+        if not self.credenciales_cifradas:
+            return {}
+        try:
+            data = decrypt_data(self.credenciales_cifradas, return_json=True)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def set_credenciales(self, credenciales: dict) -> None:
+        """Cifra y almacena el diccionario de credenciales en el campo credenciales_cifradas."""
+        from Menu.encryption import encrypt_data
+        if not credenciales:
+            self.credenciales_cifradas = ""
+        else:
+            self.credenciales_cifradas = encrypt_data(credenciales)
+
+    def get_api_key(self, proveedor: str) -> str:
+        """Obtiene la clave para un proveedor específico (ej. ubereats, pedidosya, rappi)."""
+        creds = self.get_credenciales()
+        return creds.get(proveedor.lower(), "")

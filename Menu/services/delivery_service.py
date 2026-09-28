@@ -84,10 +84,10 @@ def procesar_orden_delivery_externa(
                 tipo_pago=payload.get("tipo_pago") or "Delivery",
                 order_id_externo=order_id_ext,
                 detalles_entrega=detalles_entrega[:250],
-                descuento=float(payload.get("descuento") or 0.0)
+                descuento=Decimal(str(payload.get("descuento") or 0))
             )
 
-            total_calculado = 0.0
+            total_calculado = Decimal('0.00')
 
             for it in items_raw:
                 sku_externo = str(it.get("sku") or it.get("external_id") or it.get("id") or "").strip()
@@ -106,7 +106,7 @@ def procesar_orden_delivery_externa(
 
                 if precio_tier_obj:
                     plato = precio_tier_obj.plato
-                    precio_aplicado = float(precio_tier_obj.precio)
+                    precio_aplicado = precio_tier_obj.precio
                 else:
                     # 2. Fallback por ID de plato o por Nombre exacto
                     if sku_externo.isdigit():
@@ -115,14 +115,14 @@ def procesar_orden_delivery_externa(
                         plato = Plato.objects.filter(restaurante=restaurante, nombre__iexact=nombre_item).first()
 
                     if plato:
-                        precio_aplicado = plato.get_precio_para_canal(canal_db)
+                        precio_aplicado = Decimal(str(plato.get_precio_para_canal(canal_db)))
                     else:
                         # Si no existe en catálogo, usar precio que viene en el payload
-                        precio_aplicado = float(precio_unitario_payload or 0.0)
+                        precio_aplicado = Decimal(str(precio_unitario_payload or 0))
 
                 # Si el payload traía un precio explícito, respetarlo si no hubo tier
                 if precio_unitario_payload is not None and (not plato or precio_aplicado == 0):
-                    precio_aplicado = float(precio_unitario_payload)
+                    precio_aplicado = Decimal(str(precio_unitario_payload))
 
                 OrdenItem.objects.create(
                     orden=orden,
@@ -132,7 +132,10 @@ def procesar_orden_delivery_externa(
                 )
                 total_calculado += (precio_aplicado * cantidad)
 
-            orden.monto_total = max(round(total_calculado - orden.descuento, 2), 0.0)
+            orden.monto_total = max(
+                (total_calculado - orden.descuento).quantize(Decimal('0.01')),
+                Decimal('0.00')
+            )
             orden.save(update_fields=["monto_total"])
 
             logger.info("Orden de delivery #%s (%s) creada exitosamente por API. ExtID: %s", orden.id, canal_db, order_id_ext)
