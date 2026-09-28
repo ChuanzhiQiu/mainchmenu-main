@@ -197,19 +197,6 @@
                     </a>
                     {% endif %}
 
-                    {% if es_global_admin and restaurantes_disponibles %}
-                    <div class="relative hidden sm:block">
-                        <select id="tenant-switcher"
-                                class="appearance-none bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded-lg px-2.5 py-2 pr-8 cursor-pointer hover:bg-slate-700 transition focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                onchange="window.location.href = '/r/' + this.value + '/pos/'">
-                            {% for r in restaurantes_disponibles %}
-                            <option value="{{ r.slug }}" {% if current_tenant.slug == r.slug %}selected{% endif %}>{{ r.nombre }} ({{ r.slug }})</option>
-                            {% endfor %}
-                        </select>
-                        <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                    </div>
-                    {% endif %}
-
                     <!-- Rol & Auth Controls -->
                     <div class="h-6 w-px bg-slate-800 mx-1 hidden sm:block"></div>
 

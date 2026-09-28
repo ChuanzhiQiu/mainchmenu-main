@@ -311,6 +311,12 @@
                     <input type="hidden" name="menus" id="menus_seleccionados">
                     <input type="hidden" name="total" id="total_value">
 
+                    <!-- Aviso de turno requerido (solo modo caja) -->
+                    <div id="turno-requerido-banner" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-start gap-2">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"></i>
+                        <span>Debe abrir un turno de caja para generar comandas.</span>
+                    </div>
+
                     <!-- Botón Principal de Envío Asíncrono -->
                     <div class="pt-3">
                         <button type="button" 
@@ -406,6 +412,8 @@
 <script>
     // URL base de la API DRF multi-tenant (canonical /r/<slug>/api/)
     const API_BASE = "/r/{{ restaurante.slug }}/api/";
+    const ES_ADMIN = {{ es_admin|yesno:"true,false" }};
+    const TURNO_ABIERTO_INICIAL = {{ turno_abierto|yesno:"true,false" }};
 
     document.addEventListener("DOMContentLoaded", () => {
         // Carrito en memoria: { key: { tipo, id, nombre, valor, cantidad } }
@@ -480,6 +488,42 @@
         selectArea.addEventListener("change", renderMesas);
         cargarAreas();
         cargarMesas();
+
+        // 0-bis. Control de turno para creación de comandas (modo caja)
+        function setTurnoBloqueado(bloqueado) {
+            const banner = document.getElementById("turno-requerido-banner");
+            if (banner) banner.style.display = bloqueado ? "flex" : "none";
+            confirmarBtn.disabled = bloqueado;
+            if (bloqueado) {
+                confirmarBtn.classList.add("opacity-50", "cursor-not-allowed");
+            } else {
+                confirmarBtn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
+        }
+
+        async function verificarTurno() {
+            if (ES_ADMIN) {
+                setTurnoBloqueado(false);
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_BASE}cajero/estado/`);
+                if (!resp.ok) {
+                    setTurnoBloqueado(true);
+                    return;
+                }
+                const data = await resp.json();
+                const abierto = !!(data.turno && data.turno.estado === "ABIERTO");
+                setTurnoBloqueado(!abierto);
+            } catch (e) {
+                console.error("Error verificando turno:", e);
+                setTurnoBloqueado(true);
+            }
+        }
+
+        setTurnoBloqueado(!ES_ADMIN && !TURNO_ABIERTO_INICIAL);
+        verificarTurno();
+        setInterval(verificarTurno, 5000);
 
         // 1. Clasificación heurística de categorías para pestañas del cliente
         function getCategoryForName(name, isCombo) {
@@ -718,6 +762,13 @@
 
         // 10. Envío Asíncrono de la Orden vía fetch() (F15)
         confirmarBtn.addEventListener("click", () => {
+            if (!ES_ADMIN && confirmarBtn.disabled) {
+                const msgTurno = "Debe abrir un turno de caja para generar comandas";
+                if (window.showToast) window.showToast(msgTurno, "warning");
+                else alert(msgTurno);
+                return;
+            }
+
             const cliente = clienteInput.value.trim();
             if (!cliente) {
                 if (window.showToast) {

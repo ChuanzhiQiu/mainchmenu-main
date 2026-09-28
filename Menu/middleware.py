@@ -5,8 +5,8 @@ Enforces per-tenant scoping via ContextVars and sets anti-CDN cache poisoning he
 import re
 import logging
 from urllib.parse import urlparse
-from django.http import Http404
-from Menu.models import Restaurante
+from django.http import Http404, HttpResponseForbidden
+from Menu.models import Restaurante, get_restaurante_de_usuario
 from Menu.tenant_context import set_current_tenant, reset_current_tenant
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,22 @@ class TenantMiddleware:
         except Exception as exc:
             logger.error("Error resolving tenant in TenantMiddleware (possible unmigrated database): %s", exc)
             restaurante = None
+
+        # =====================================================================
+        # Strict tenancy (Sección 2.A / 4 AGENTS.md):
+        # Un administrador autenticado vinculado a UN restaurante (tenant) no
+        # puede navegar manualmente a slugs ajenos. Su restaurante asociado
+        # determina de forma unívoca y forzada el tenant activo.
+        # =====================================================================
+        if hasattr(request, "user") and request.user.is_authenticated:
+            user_restaurante = get_restaurante_de_usuario(request.user)
+
+            if user_restaurante is not None:
+                if match and match.group("slug").lower() != user_restaurante.slug.lower():
+                    return HttpResponseForbidden(
+                        "Acceso denegado: no tiene permisos sobre este restaurante."
+                    )
+                restaurante = user_restaurante
 
         # Attach to request and activate ContextVar
         request.restaurante = restaurante

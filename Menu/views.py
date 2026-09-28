@@ -3,7 +3,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from .models import (
     Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock,
-    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa
+    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa,
+    get_restaurante_de_usuario
 )
 from django.http import JsonResponse, Http404, HttpResponseForbidden
 from django.contrib import messages
@@ -40,6 +41,12 @@ def get_current_restaurante(request=None) -> Restaurante:
     """
     if request is not None and hasattr(request, 'restaurante') and request.restaurante:
         return request.restaurante
+
+    # Administrador autenticado vinculado a un único restaurante (tenant forzado).
+    if request is not None and hasattr(request, 'user') and request.user.is_authenticated:
+        user_restaurante = get_restaurante_de_usuario(request.user)
+        if user_restaurante is not None:
+            return user_restaurante
 
     from Menu.tenant_context import get_current_tenant
     ctx_tenant = get_current_tenant()
@@ -134,6 +141,12 @@ def login_view(request):
         if user is not None:
             if user.is_staff or user.is_superuser:
                 login(request, user)
+
+                # Fijar el tenant del administrador en sesión (tenancy forzado).
+                restaurante_admin = get_restaurante_de_usuario(user)
+                if restaurante_admin is not None and hasattr(request, "session"):
+                    request.session["active_tenant_slug"] = restaurante_admin.slug
+
                 messages.success(request, f"¡Bienvenido(a) Administrador(a) {user.username}!")
                 return redirect(next_url)
             else:
@@ -693,6 +706,22 @@ def crear_orden(request):
                         if not turno:
                             turno = TurnoCaja.all_objects.filter(restaurante=restaurante, cajero=cajero, estado=TurnoCaja.ESTADO_ABIERTO).first()
 
+            # Control de turno (Sección 3 AGENTS.md): exigir turno ABIERTO para crear
+            # comandas, con excepción únicamente para el Administrador del restaurante,
+            # cuya orden se audita como emitida directamente por él.
+            emitida_por_admin = False
+            admin_emisor = None
+            if not turno:
+                if es_admin:
+                    emitida_por_admin = True
+                    admin_emisor = request.user
+                else:
+                    msg = "Debe abrir un turno de caja para generar comandas"
+                    if is_json or is_ajax:
+                        return JsonResponse({"success": False, "message": msg}, status=400)
+                    messages.error(request, msg)
+                    return redirect("Menu:crear_orden")
+
             with transaction.atomic():
                 nueva_orden = Orden(
                     restaurante=restaurante,
@@ -704,6 +733,8 @@ def crear_orden(request):
                     turno=turno,
                     mesa=mesa,
                     tipo_servicio=tipo_servicio,
+                    emitida_por_admin=emitida_por_admin,
+                    admin_emisor=admin_emisor,
                     estado=Orden.ESTADO_EN_CURSO
                 )
                 nueva_orden.save()
@@ -763,6 +794,9 @@ def crear_orden(request):
     menus_por_letra = {letra: list(grupo) for letra, grupo in groupby(menus, key=lambda x: x.nombre[0].upper())}
     
     es_admin = request.user.is_authenticated and request.user.is_staff
+    turno_abierto = TurnoCaja.all_objects.filter(
+        restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO
+    ).exists()
     # El usuario de caja NO puede registrar pedidos por delivery
     if es_admin:
         canales_ventas = Orden.CANAL_CHOICES
@@ -776,6 +810,7 @@ def crear_orden(request):
         "canales_ventas": canales_ventas,
         "tipos_pago": tipos_pago,
         "es_admin": es_admin,
+        "turno_abierto": turno_abierto,
         "restaurante": restaurante,
     })
 

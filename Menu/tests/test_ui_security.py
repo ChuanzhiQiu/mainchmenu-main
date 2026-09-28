@@ -26,6 +26,7 @@ from Menu.models import (
     Cajero,
     Mesa,
     Orden,
+    PerfilAdministrador,
     Plato,
     Restaurante,
 )
@@ -301,10 +302,9 @@ class MesaCrossTenantOrderCreationTests(TestCase):
 
 class TenantNavigationSpoofingTests(TestCase):
     """
-    Un Admin del Restaurante A intenta navegar directamente al slug del Restaurante B.
-    El slug canónico de la URL es la fuente autoritativa de tenant (Tier 1 del
-    middleware), por lo que la vista debe quedar estrictamente scoped a B sin
-    filtrar ni mezclar cajeros del tenant A.
+    Un Admin vinculado de forma unívoca al Restaurante A intenta navegar
+    manualmente al slug del Restaurante B. El middleware de tenancy estricta
+    debe responder 403 Forbidden (o 404) sin filtrar ni mezclar datos.
     """
 
     def setUp(self):
@@ -319,6 +319,8 @@ class TenantNavigationSpoofingTests(TestCase):
             username="nav_admin_sec", password="password123",
             email="navadmin@test.cl",
         )
+        # Vinculación unívoca Admin -> Restaurante A
+        PerfilAdministrador.objects.create(user=self.admin, restaurante=self.tenant_a)
         self.client.login(username="nav_admin_sec", password="password123")
 
         self.cajero_a = Cajero.objects.create(
@@ -334,20 +336,22 @@ class TenantNavigationSpoofingTests(TestCase):
             pin_hash="hash",
         )
 
-    def test_admin_a_navega_a_slug_b_solo_ve_cajeros_de_b(self):
+    def test_admin_a_no_puede_navegar_a_slug_b(self):
         resp = self.client.get(f"/r/{self.tenant_b.slug}/cajeros/")
+        self.assertIn(resp.status_code, (403, 404))
+
+    def test_admin_a_sigue_accediendo_a_su_propio_tenant(self):
+        resp = self.client.get(f"/r/{self.tenant_a.slug}/cajeros/")
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, self.cajero_b.nombre)
-        self.assertNotContains(resp, self.cajero_a.nombre)
+        self.assertContains(resp, self.cajero_a.nombre)
+        self.assertNotContains(resp, self.cajero_b.nombre)
 
     def test_navegacion_cruzada_no_envenena_sesion_al_volver_a_a(self):
-        # Primero el Admin visita el slug de B...
+        # Primero el Admin intenta el slug de B (bloqueado)...
         resp_b = self.client.get(f"/r/{self.tenant_b.slug}/cajeros/")
-        self.assertEqual(resp_b.status_code, 200)
-        self.assertContains(resp_b, self.cajero_b.nombre)
-        self.assertNotContains(resp_b, self.cajero_a.nombre)
+        self.assertIn(resp_b.status_code, (403, 404))
 
-        # ...luego regresa a su tenant A: la URL vuelve a mandar.
+        # ...luego regresa a su tenant A y sigue operando con normalidad.
         resp_a = self.client.get(f"/r/{self.tenant_a.slug}/cajeros/")
         self.assertEqual(resp_a.status_code, 200)
         self.assertContains(resp_a, self.cajero_a.nombre)

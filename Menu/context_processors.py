@@ -1,10 +1,12 @@
 """
-Menu/context_processors.py: Injects tenant-aware URLs, active tenant and the
-tenant switcher context (for global admins) into every template.
+Menu/context_processors.py: Injects tenant-aware URLs and the active tenant into
+every template.
+
+Por directriz de tenancy estricta (Sección 2.A y 4 AGENTS.md), este processor
+NO expone listados de restaurantes ni flags de "superadmin global". Únicamente
+entrega la información del restaurante al que pertenece la sesión actual.
 """
 from django.urls import reverse
-
-from Menu.models import Restaurante
 
 
 def _build_tenant_urls(slug):
@@ -24,39 +26,18 @@ def tenant_navigation(request):
     Provides canonical tenant URLs when inside a tenant context (/r/<slug>/...),
     or falls back to standard reverse routes for legacy compatibility.
 
-    Additionally exposes:
-    - `es_global_admin`: True when the request user is an authenticated staff/superuser
-      (global admin) who may switch between tenants.
-    - `restaurantes_disponibles`: active tenants for the tenant switcher UI.
+    El contexto solo expone `current_tenant` (restaurante autenticado); nunca
+    una lista conmutable de restaurantes.
     """
     tenant = getattr(request, "restaurante", None)
 
-    es_global_admin = bool(
-        hasattr(request, "user")
-        and request.user.is_authenticated
-        and (request.user.is_staff or request.user.is_superuser)
-    )
-
-    # Listado de tenants activos para el switch (solo relevante para admin global).
-    restaurantes_disponibles = []
-    if es_global_admin:
-        restaurantes_disponibles = list(
-            Restaurante.objects.filter(activo=True).order_by("nombre").values("slug", "nombre")
-        )
-
     if tenant and getattr(tenant, "slug", None):
-        ctx = {
-            "current_tenant": tenant,
-            "es_global_admin": es_global_admin,
-            "restaurantes_disponibles": restaurantes_disponibles,
-        }
+        ctx = {"current_tenant": tenant}
         ctx.update(_build_tenant_urls(tenant.slug))
         return ctx
 
     return {
         "current_tenant": None,
-        "es_global_admin": es_global_admin,
-        "restaurantes_disponibles": restaurantes_disponibles,
         "url_pos": reverse("Menu:pedidos_crear"),
         "url_kds": reverse("Menu:inicio"),
         "url_inventario": reverse("Menu:inventario"),

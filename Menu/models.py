@@ -346,6 +346,19 @@ class Orden(models.Model):
         related_name='ordenes',
         verbose_name="Turno de Caja"
     )
+    emitida_por_admin = models.BooleanField(
+        default=False,
+        verbose_name="Emitida por Administrador",
+        help_text="True si la orden fue creada directamente por el administrador del restaurante sin turno de caja abierto."
+    )
+    admin_emisor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ordenes_emitidas',
+        verbose_name="Administrador Emisor"
+    )
 
     def __str__(self):
         return f"Orden {self.id} - {self.cliente} ({self.canal_venta} - {self.estado})"
@@ -1061,6 +1074,50 @@ class Cajero(models.Model):
         self.intentos_fallidos = 0
         self.bloqueado_hasta = None
         self.save(update_fields=['intentos_fallidos', 'bloqueado_hasta'])
+
+
+class PerfilAdministrador(models.Model):
+    """
+    Vinculación unívoca entre un usuario administrador y su restaurante (tenant).
+
+    Se modela como tabla separada (en lugar de añadir una columna a `Restaurante`)
+    para no alterar el esquema de la tabla de tenants y evitar interacciones con
+    los defaults callables (`get_default_restaurante`) usados en migraciones históricas.
+    """
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="perfil_administrador",
+        verbose_name="Usuario Administrador"
+    )
+    restaurante = models.OneToOneField(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="perfil_administrador",
+        verbose_name="Restaurante Asociado"
+    )
+    creado_el = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Vinculación")
+
+    objects = models.Manager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Perfil de Administrador"
+        verbose_name_plural = "Perfiles de Administrador"
+
+    def __str__(self):
+        return f"{self.user.username} -> {self.restaurante.nombre}"
+
+
+def get_restaurante_de_usuario(user):
+    """Retorna el restaurante asociado de forma unívoca a un usuario admin (o None)."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return None
+    try:
+        return user.perfil_administrador.restaurante
+    except PerfilAdministrador.DoesNotExist:
+        return None
 
 
 class TurnoCaja(models.Model):

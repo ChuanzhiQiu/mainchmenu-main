@@ -479,6 +479,25 @@ function getCsrfToken() {
     return cookieValue || document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
 }
 
+// Soporte de teclado físico para el ingreso del PIN de cajero.
+// Solo captura teclas cuando la pantalla de bloqueo está visible, para no
+// interferir con otros inputs (nombre de cliente, montos, etc.).
+document.addEventListener('keydown', (e) => {
+    const overlay = document.getElementById('pantalla-bloqueo-overlay');
+    if (!overlay || overlay.style.display !== 'flex') return;
+
+    if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        pressNumpad(e.key);
+    } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        backspacePin();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        enviarDesbloqueoPin();
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     inicializarSeguridadCajero();
     if (window.lucide) {

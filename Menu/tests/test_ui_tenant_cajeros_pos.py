@@ -2,7 +2,7 @@
 Pruebas de integración para la UI multi-tenant, gestión de cajeros y conexión POS.
 
 Cubre:
-- La barra de navegación resuelve el tenant activo y expone el switch para admin global.
+- La barra de navegación resuelve el tenant activo (badge informativo, sin switch).
 - La vista administrativa de cajeros renderiza solo cajeros del tenant activo.
 - Crear/activar/bloquear cajeros está estrictamente aislado por `restaurante_id`.
 - La vista POS renderiza los selectores de Áreas/Mesas y la modal de cobro.
@@ -38,13 +38,15 @@ class TenantNavbarContextTests(TestCase):
         self.assertContains(resp, self.tenant.nombre)
         self.assertContains(resp, f"/{self.tenant.slug}")
 
-    def test_admin_global_ve_switch_de_tenants(self):
+    def test_no_existe_switch_de_restaurantes(self):
+        """La UI no debe exponer un selector conmutable de restaurantes."""
         self.client.login(username="nav_admin", password="password123")
         resp = self.client.get(f"/r/{self.tenant.slug}/pos/")
         self.assertEqual(resp.status_code, 200)
-        # El switch lista ambos tenants y selecciona el activo.
-        self.assertContains(resp, "tenant-switcher")
-        self.assertContains(resp, self.otro.nombre)
+        self.assertNotContains(resp, "tenant-switcher")
+        self.assertNotContains(resp, "restaurantes_disponibles")
+        # El badge informativo del restaurante activo sí está presente.
+        self.assertContains(resp, self.tenant.nombre)
 
 
 class CajeroAdminViewTests(TestCase):
@@ -188,6 +190,16 @@ class PosUiIntegrationTests(TestCase):
         self.assertContains(resp, 'id="select-mesa"')
         self.assertContains(resp, 'id="modal-cobro"')
         self.assertContains(resp, "Cobrar Orden")
+
+    def test_pos_renderiza_aviso_de_turno_y_soporte_teclado_fisico_pin(self):
+        resp = self.client.get(f"/r/{self.tenant.slug}/pos/")
+        self.assertEqual(resp.status_code, 200)
+        # Aviso de turno requerido para generar comandas.
+        self.assertContains(resp, 'id="turno-requerido-banner"')
+        self.assertContains(resp, "Debe abrir un turno de caja para generar comandas")
+        # Soporte de teclado físico en la pantalla de bloqueo de PIN.
+        self.assertContains(resp, "addEventListener('keydown'")
+        self.assertContains(resp, 'pantalla-bloqueo-overlay')
 
     def test_crear_orden_rechaza_mesa_de_otro_tenant(self):
         plato = Plato.objects.create(restaurante=self.tenant, nombre="Plato POS", valor=Decimal("5000.00"))
