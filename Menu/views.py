@@ -3,7 +3,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from .models import (
     Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock,
-    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja
+    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa
 )
 from django.http import JsonResponse, Http404, HttpResponseForbidden
 from django.contrib import messages
@@ -12,7 +12,7 @@ import json
 import math
 from .utils import imprimir_comanda
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from itertools import groupby
 from decimal import Decimal, InvalidOperation
 from django.db.models import Sum, Count, Q, F
@@ -482,6 +482,20 @@ def crear_orden(request):
 
         cliente = str(cliente).strip()
 
+        # 2-bis. Parse opcional de mesa y tipo de servicio (salón/mesas)
+        mesa = None
+        raw_mesa_id = data.get("mesa_id")
+        if raw_mesa_id not in (None, "", "null", "None"):
+            try:
+                mesa = Mesa.all_objects.get(id=int(raw_mesa_id), restaurante=restaurante)
+            except (Mesa.DoesNotExist, ValueError, TypeError):
+                msg = "La mesa seleccionada no existe o no pertenece a este restaurante."
+                if is_json or is_ajax:
+                    return JsonResponse({"success": False, "message": msg}, status=400)
+                messages.error(request, msg)
+                return redirect("Menu:crear_orden")
+        tipo_servicio = str(data.get("tipo_servicio") or ("salon" if mesa else "mostrador")).strip() or "mostrador"
+
         # 3. Validar descuento (no negativo, numérico finito)
         raw_descuento = data.get("descuento")
         if raw_descuento is None or str(raw_descuento).strip() == "":
@@ -688,6 +702,8 @@ def crear_orden(request):
                     descuento=descuento,
                     cajero=cajero,
                     turno=turno,
+                    mesa=mesa,
+                    tipo_servicio=tipo_servicio,
                     estado=Orden.ESTADO_EN_CURSO
                 )
                 nueva_orden.save()
@@ -2143,6 +2159,132 @@ def api_supervisor_desbloquear_cajero(request, slug=None):
     if ok:
         return JsonResponse({"success": True, "message": msg})
     return JsonResponse({"success": False, "error": msg}, status=404)
+
+
+# =============================================================================
+# GESTIÓN ADMINISTRATIVA DE CAJEROS (Módulo de Administración - Tenant Scoped)
+# =============================================================================
+
+def _parse_json_body(request):
+    """Parsea el body JSON o, en su defecto, devuelve request.POST."""
+    if getattr(request, "content_type", "") == "application/json" and request.body:
+        try:
+            return json.loads(request.body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return {}
+    if request.body:
+        try:
+            return json.loads(request.body.decode("utf-8"))
+        except Exception:
+            pass
+    return request.POST.dict()
+
+
+@admin_required
+def cajeros_admin_view(request):
+    """Vista administrativa para gestionar el equipo de cajeros del restaurante activo."""
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    cajeros = Cajero.objects.filter(restaurante=restaurante).order_by("nombre")
+    return render(request, "Menu/cajeros.html", {
+        "restaurante": restaurante,
+        "cajeros": cajeros,
+    })
+
+
+@admin_required
+def api_cajero_crear(request):
+    """Crea un nuevo perfil de cajero (nombre, código, PIN hasheado y estado)."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    nombre = str(body.get("nombre", "")).strip()
+    codigo = str(body.get("codigo_empleado", "")).strip()
+    pin = str(body.get("pin", "")).strip()
+    activo = body.get("activo", True)
+
+    if not nombre:
+        return JsonResponse({"success": False, "error": "El nombre del cajero es obligatorio."}, status=400)
+
+    # Código de empleado: si no se envía, se genera uno único por tenant.
+    if not codigo:
+        import uuid
+        codigo = f"CAJ-{uuid.uuid4().hex[:6].upper()}"
+
+    cajero = Cajero(restaurante=restaurante, nombre=nombre, codigo_empleado=codigo, activo=bool(activo))
+    try:
+        cajero.set_pin(pin)
+    except ValidationError as exc:
+        return JsonResponse({"success": False, "error": str(exc)}, status=400)
+
+    try:
+        cajero.save()
+    except IntegrityError:
+        return JsonResponse({
+            "success": False,
+            "error": f"Ya existe un cajero con el código '{codigo}' en este restaurante."
+        }, status=400)
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Cajero '{cajero.nombre}' creado correctamente.",
+        "cajero": {
+            "id": cajero.id,
+            "nombre": cajero.nombre,
+            "codigo": cajero.codigo_empleado,
+            "activo": cajero.activo,
+        }
+    }, status=201)
+
+
+@admin_required
+def api_cajero_toggle_activo(request):
+    """Bloquea/desactiva o reactiva un cajero del restaurante activo (nunca cross-tenant)."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    cajero_id = body.get("cajero_id")
+    if not cajero_id:
+        return JsonResponse({"success": False, "error": "ID de cajero es obligatorio."}, status=400)
+
+    try:
+        cajero_id_int = int(cajero_id)
+    except (ValueError, TypeError):
+        return JsonResponse({"success": False, "error": "ID de cajero inválido."}, status=400)
+
+    cajero = Cajero.all_objects.filter(id=cajero_id_int, restaurante=restaurante).first()
+    if not cajero:
+        return JsonResponse({"success": False, "error": "Cajero no encontrado en este restaurante."}, status=404)
+
+    cajero.activo = not cajero.activo
+    update_fields = ["activo"]
+    if not cajero.activo:
+        # Al desactivar, limpiamos el bloqueo por intentos fallidos.
+        cajero.intentos_fallidos = 0
+        cajero.bloqueado_hasta = None
+        update_fields += ["intentos_fallidos", "bloqueado_hasta"]
+    cajero.save(update_fields=update_fields)
+
+    estado = "activado" if cajero.activo else "desactivado/bloqueado"
+    return JsonResponse({
+        "success": True,
+        "message": f"Cajero '{cajero.nombre}' {estado} correctamente.",
+        "cajero": {
+            "id": cajero.id,
+            "nombre": cajero.nombre,
+            "codigo": cajero.codigo_empleado,
+            "activo": cajero.activo,
+        }
+    })
 
 
 

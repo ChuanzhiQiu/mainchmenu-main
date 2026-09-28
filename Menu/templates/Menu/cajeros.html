@@ -1,0 +1,253 @@
+{% extends "Menu/base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- Encabezado de la página -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+            <div class="flex items-center gap-2 text-rose-600 font-bold text-xs uppercase tracking-wider mb-1">
+                <i data-lucide="users" class="w-4 h-4"></i>
+                <span>Gestión de Equipo de Caja</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Cajeros</h1>
+            <p class="text-sm text-slate-500 mt-1">
+                Administra los perfiles de cajero, sus PIN de acceso y su estado operativo.
+                <span class="text-slate-400">Restaurante activo: <strong class="text-slate-600">{{ restaurante.nombre }}</strong>.</span>
+            </p>
+        </div>
+        <button id="btn-crear-cajero"
+                class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-sm hover:shadow transition inline-flex items-center gap-2">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>Nuevo Cajero</span>
+        </button>
+    </div>
+
+    <!-- Listado de Cajeros -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="id-card" class="w-5 h-5 text-rose-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Perfiles de Cajero</h2>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">
+                {{ cajeros|length }} cajeros registrados
+            </span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3 px-6">ID</th>
+                        <th class="py-3 px-6">Nombre</th>
+                        <th class="py-3 px-6">Código Empleado</th>
+                        <th class="py-3 px-6">PIN</th>
+                        <th class="py-3 px-6">Estado</th>
+                        <th class="py-3 px-6 text-right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for cajero in cajeros %}
+                    <tr class="hover:bg-slate-50/80 transition" id="fila-cajero-{{ cajero.id }}">
+                        <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ cajero.id }}</td>
+                        <td class="py-3.5 px-6 font-bold text-slate-900">{{ cajero.nombre }}</td>
+                        <td class="py-3.5 px-6 font-mono text-xs text-slate-600">{{ cajero.codigo_empleado|default:"—" }}</td>
+                        <td class="py-3.5 px-6 text-slate-400 text-xs">•••• (hash seguro)</td>
+                        <td class="py-3.5 px-6">
+                            {% if cajero.activo %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                Activo
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <i data-lucide="ban" class="w-3.5 h-3.5"></i>
+                                Bloqueado
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-6 text-right">
+                            <button class="btn-toggle-cajero inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if cajero.activo %}bg-rose-50 hover:bg-rose-100 text-rose-600{% else %}bg-emerald-50 hover:bg-emerald-100 text-emerald-700{% endif %}"
+                                    data-id="{{ cajero.id }}" data-nombre="{{ cajero.nombre }}" data-activo="{{ cajero.activo|yesno:'1,0' }}">
+                                <i data-lucide="{% if cajero.activo %}lock{% else %}unlock{% endif %}" class="w-3.5 h-3.5"></i>
+                                <span>{% if cajero.activo %}Bloquear{% else %}Reactivar{% endif %}</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="py-10 text-center text-slate-400">
+                            No hay cajeros registrados en este restaurante. Haz clic en "Nuevo Cajero" para crear el primero.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Nota de seguridad -->
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-800 flex items-start gap-3">
+        <i data-lucide="shield-alert" class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"></i>
+        <p>
+            <strong>PIN seguro:</strong> el PIN de 4 dígitos nunca se almacena en texto plano; se guarda un hash
+            PBKDF2 (capa de seguridad M7). Cada cajero pertenece estrictamente al restaurante activo
+            <strong>{{ restaurante.nombre }}</strong> y no puede operar en otro local.
+        </p>
+    </div>
+</div>
+
+<!-- Modal de Creación de Cajero -->
+<div id="modal-crear-cajero" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div class="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center">
+                <i data-lucide="user-plus" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Nuevo Cajero</h3>
+                <p class="text-xs text-slate-500">Se creará en el restaurante {{ restaurante.nombre }}</p>
+            </div>
+        </div>
+
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Nombre Completo *</label>
+                <input type="text" id="input-cajero-nombre" placeholder="Ej: María González"
+                       class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Código de Empleado</label>
+                <input type="text" id="input-cajero-codigo" placeholder="Ej: CAJ-001 (opcional)"
+                       class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">PIN de 4 Dígitos *</label>
+                <input type="password" id="input-cajero-pin" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"
+                       placeholder="••••"
+                       class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl tracking-widest focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none">
+                <p class="text-xs text-slate-400 mt-1">Debe ser exactamente 4 dígitos numéricos.</p>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" id="input-cajero-activo" checked class="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500">
+                <span>Activo (puede operar de inmediato)</span>
+            </label>
+            <div id="modal-cajero-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"></div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+            <button type="button" onclick="cerrarModalCrearCajero()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">
+                Cancelar
+            </button>
+            <button type="button" id="btn-confirmar-crear-cajero" onclick="crearCajero()"
+                    class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm rounded-xl transition inline-flex items-center gap-2">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Guardar Cajero</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+const TENANT_SLUG = "{{ restaurante.slug }}";
+const API_CAJERO_CREAR = `/r/${TENANT_SLUG}/api/cajeros/crear/`;
+const API_CAJERO_TOGGLE = `/r/${TENANT_SLUG}/api/cajeros/toggle-activo/`;
+
+function getCsrfToken() {
+    const input = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (input) return input.value;
+    const cookie = document.cookie.split('; ').find(row => row.startsWith('csrftoken='));
+    return cookie ? decodeURIComponent(cookie.split('=')[1]) : '';
+}
+
+function abrirModalCrearCajero() {
+    document.getElementById('modal-crear-cajero').style.display = 'flex';
+    document.getElementById('modal-cajero-error').classList.add('hidden');
+    document.getElementById('input-cajero-nombre').value = '';
+    document.getElementById('input-cajero-codigo').value = '';
+    document.getElementById('input-cajero-pin').value = '';
+    document.getElementById('input-cajero-activo').checked = true;
+}
+
+function cerrarModalCrearCajero() {
+    document.getElementById('modal-crear-cajero').style.display = 'none';
+}
+
+function mostrarErrorModalCajero(msg) {
+    const el = document.getElementById('modal-cajero-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+
+async function crearCajero() {
+    const nombre = document.getElementById('input-cajero-nombre').value.trim();
+    const codigo = document.getElementById('input-cajero-codigo').value.trim();
+    const pin = document.getElementById('input-cajero-pin').value.trim();
+    const activo = document.getElementById('input-cajero-activo').checked;
+
+    if (!nombre) {
+        mostrarErrorModalCajero('El nombre del cajero es obligatorio.');
+        return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+        mostrarErrorModalCajero('El PIN debe constar exactamente de 4 dígitos numéricos.');
+        return;
+    }
+
+    try {
+        const resp = await fetch(API_CAJERO_CREAR, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ nombre, codigo_empleado: codigo, pin, activo })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (window.showToast) window.showToast(data.message, 'success');
+            window.location.reload();
+        } else {
+            mostrarErrorModalCajero(data.error || 'Error al crear el cajero.');
+        }
+    } catch (e) {
+        mostrarErrorModalCajero('Error de conexión al crear el cajero.');
+    }
+}
+
+async function toggleCajero(id, nombre) {
+    if (!confirm(`¿Desea cambiar el estado del cajero "${nombre}"?`)) return;
+    try {
+        const resp = await fetch(API_CAJERO_TOGGLE, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ cajero_id: id })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            if (window.showToast) window.showToast(data.message, 'success');
+            window.location.reload();
+        } else {
+            if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
+            else alert(data.error || 'Error al cambiar el estado.');
+        }
+    } catch (e) {
+        if (window.showToast) window.showToast('Error de conexión.', 'error');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-crear-cajero').addEventListener('click', abrirModalCrearCajero);
+    document.querySelectorAll('.btn-toggle-cajero').forEach(btn => {
+        btn.addEventListener('click', () => toggleCajero(btn.dataset.id, btn.dataset.nombre));
+    });
+    if (window.lucide) lucide.createIcons();
+});
+</script>
+{% endblock %}

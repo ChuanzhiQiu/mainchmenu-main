@@ -17,6 +17,11 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            <button type="button" id="btn-cobrar-orden" onclick="abrirModalCobro()"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs rounded-lg transition shadow-sm">
+                <i data-lucide="banknote" class="w-4 h-4"></i>
+                <span>Cobrar Orden</span>
+            </button>
             <a href="{% url 'Menu:inicio' %}" class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition">
                 <i data-lucide="utensils" class="w-4 h-4"></i>
                 <span>Ver Cocina KDS</span>
@@ -228,6 +233,26 @@
                         </div>
                     </div>
 
+                    <!-- Servicio en Salón: selector de Áreas y Mesas (opcional) -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label for="select-area" class="block text-xs font-bold text-slate-700 mb-1">
+                                Área (Salón)
+                            </label>
+                            <select id="select-area" class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                                <option value="">Sin área</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="select-mesa" class="block text-xs font-bold text-slate-700 mb-1">
+                                Mesa
+                            </label>
+                            <select id="select-mesa" class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-500">
+                                <option value="">Sin mesa</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <!-- Descuento Monetario en Pesos CLP -->
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -305,8 +330,83 @@
 
 </div>
 
+<!-- ================================================================= -->
+<!-- MODAL DE COBRO DE ORDEN (conectado al endpoint registrar-pago)    -->
+<!-- ================================================================= -->
+<div id="modal-cobro" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
+        <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
+            <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center">
+                <i data-lucide="banknote" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">Cobro de Orden</h3>
+                <p class="text-xs text-slate-500">Seleccione la orden pendiente y registre el pago.</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Orden en Curso</label>
+            <select id="cobro-orden-select" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                <option value="">Cargando órdenes...</option>
+            </select>
+        </div>
+
+        <div id="cobro-orden-detalle" class="hidden text-xs text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-200"></div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Monto a Pagar ($)</label>
+                <input type="number" id="cobro-monto" min="1" step="100" placeholder="0"
+                       class="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Método de Pago</label>
+                <select id="cobro-metodo" class="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Tarj. Débito">Tarj. Débito</option>
+                    <option value="Tarj. Crédito">Tarj. Crédito</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Cta.Cte">Cuenta Corriente</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Junaeb">Junaeb</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Propina ($)</label>
+                <input type="number" id="cobro-propina" min="0" step="100" value="0"
+                       class="w-full px-3 py-2 text-sm font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Referencia</label>
+                <input type="text" id="cobro-referencia" placeholder="Opcional"
+                       class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none">
+            </div>
+        </div>
+
+        <div id="cobro-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"></div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+            <button type="button" onclick="cerrarModalCobro()" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">
+                Cancelar
+            </button>
+            <button type="button" id="btn-confirmar-cobro" onclick="registrarPago()"
+                    class="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-sm rounded-xl transition inline-flex items-center gap-2">
+                <i data-lucide="check-circle" class="w-4 h-4"></i>
+                <span>Registrar Pago</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Motor de Cálculo Dinámico y Envío Asíncrono POS (F13, F14, F15) -->
 <script>
+    // URL base de la API DRF multi-tenant (canonical /r/<slug>/api/)
+    const API_BASE = "/r/{{ restaurante.slug }}/api/";
+
     document.addEventListener("DOMContentLoaded", () => {
         // Carrito en memoria: { key: { tipo, id, nombre, valor, cantidad } }
         let cart = {};
@@ -319,6 +419,8 @@
         const subtotalSpan = document.getElementById("subtotal-pedido");
         const descuentoSpan = document.getElementById("descuento-pedido");
         const totalSpan = document.getElementById("total-pedido");
+        const selectArea = document.getElementById("select-area");
+        const selectMesa = document.getElementById("select-mesa");
         const confirmarBtn = document.getElementById("confirmar-orden");
         const borrarTodoBtn = document.getElementById("borrar-todo");
         const buscadorInput = document.getElementById("buscador");
@@ -328,6 +430,56 @@
             const tokenInput = document.querySelector("[name=csrfmiddlewaretoken]");
             return tokenInput ? tokenInput.value : "";
         }
+
+        // 0. Selector de Áreas y Mesas (servicio en salón) consumiendo la API DRF
+        let mesasCache = [];
+
+        async function cargarAreas() {
+            try {
+                const resp = await fetch(API_BASE + "areas/");
+                if (!resp.ok) return;
+                const areas = await resp.json();
+                selectArea.innerHTML = '<option value="">Sin área</option>';
+                areas.forEach(a => {
+                    if (a.activo) {
+                        const opt = document.createElement("option");
+                        opt.value = a.id;
+                        opt.textContent = a.nombre;
+                        selectArea.appendChild(opt);
+                    }
+                });
+            } catch (e) {
+                console.error("Error cargando áreas:", e);
+            }
+        }
+
+        async function cargarMesas() {
+            try {
+                const resp = await fetch(API_BASE + "mesas/");
+                if (!resp.ok) return;
+                mesasCache = await resp.json();
+                renderMesas();
+            } catch (e) {
+                console.error("Error cargando mesas:", e);
+            }
+        }
+
+        function renderMesas() {
+            const areaId = selectArea.value;
+            selectMesa.innerHTML = '<option value="">Sin mesa</option>';
+            mesasCache
+                .filter(m => !areaId || String(m.area) === String(areaId))
+                .forEach(m => {
+                    const opt = document.createElement("option");
+                    opt.value = m.id;
+                    opt.textContent = `Mesa ${m.numero} (${m.estado})`;
+                    selectMesa.appendChild(opt);
+                });
+        }
+
+        selectArea.addEventListener("change", renderMesas);
+        cargarAreas();
+        cargarMesas();
 
         // 1. Clasificación heurística de categorías para pestañas del cliente
         function getCategoryForName(name, isCombo) {
@@ -594,12 +746,15 @@
                 cantidad: it.cantidad,
             }));
 
+            const mesaId = selectMesa.value || "";
             const payload = {
                 cliente: cliente,
                 canal_venta: canalVentaSelect.value || "Local",
                 tipo_pago: tipoPagoSelect.value || "Efectivo",
                 descuento: Math.max(0, parseFloat(descuentoInput.value) || 0),
                 items: items,
+                mesa_id: mesaId || null,
+                tipo_servicio: mesaId ? "salon" : "mostrador",
             };
 
             confirmarBtn.disabled = true;
@@ -665,5 +820,149 @@
         }
 
     });
+
+    // =====================================================================
+    // COBRO DE ORDEN (conectado a POST /api/ordenes/{id}/registrar-pago/)
+    // =====================================================================
+    let ordenesEnCurso = [];
+
+    function abrirModalCobro() {
+        document.getElementById('modal-cobro').style.display = 'flex';
+        document.getElementById('cobro-error').classList.add('hidden');
+        document.getElementById('cobro-orden-detalle').classList.add('hidden');
+        cargarOrdenesEnCurso();
+    }
+
+    function cerrarModalCobro() {
+        document.getElementById('modal-cobro').style.display = 'none';
+    }
+
+    async function cargarOrdenesEnCurso() {
+        const select = document.getElementById('cobro-orden-select');
+        select.innerHTML = '<option value="">Cargando órdenes...</option>';
+        try {
+            const resp = await fetch(API_BASE + 'ordenes/');
+            if (!resp.ok) {
+                select.innerHTML = '<option value="">No se pudieron cargar las órdenes.</option>';
+                return;
+            }
+            const data = await resp.json();
+            ordenesEnCurso = (Array.isArray(data) ? data : (data.results || [])).filter(o => o.estado === 'En curso');
+
+            if (ordenesEnCurso.length === 0) {
+                select.innerHTML = '<option value="">No hay órdenes en curso.</option>';
+                return;
+            }
+            select.innerHTML = '<option value="">Seleccione una orden...</option>';
+            ordenesEnCurso.forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = o.id;
+                opt.textContent = `#${o.id} — ${o.cliente} — $${parseFloat(o.monto_total).toFixed(0)}`;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Error cargando órdenes:', e);
+            select.innerHTML = '<option value="">Error al cargar órdenes.</option>';
+        }
+    }
+
+    function actualizarDetalleOrden() {
+        const select = document.getElementById('cobro-orden-select');
+        const detalle = document.getElementById('cobro-orden-detalle');
+        const montoInput = document.getElementById('cobro-monto');
+        const orden = ordenesEnCurso.find(o => String(o.id) === String(select.value));
+        if (!orden) {
+            detalle.classList.add('hidden');
+            montoInput.value = '';
+            return;
+        }
+        detalle.classList.remove('hidden');
+        const mesa = orden.mesa ? `Mesa #${orden.mesa}` : 'Mostrador';
+        detalle.innerHTML = `
+            <strong>Cliente:</strong> ${escapeHtml(orden.cliente || '—')}<br>
+            <strong>Total:</strong> $${parseFloat(orden.monto_total).toFixed(0)} &nbsp;|&nbsp;
+            <strong>Servicio:</strong> ${escapeHtml(orden.tipo_servicio || 'mostrador')} &nbsp;|&nbsp;
+            <strong>Mesa:</strong> ${mesa}
+        `;
+        montoInput.value = parseFloat(orden.monto_total).toFixed(0);
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
+    }
+
+    function mostrarErrorCobro(msg) {
+        const el = document.getElementById('cobro-error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    }
+
+    async function registrarPago() {
+        const select = document.getElementById('cobro-orden-select');
+        const ordenId = select.value;
+        const monto = document.getElementById('cobro-monto').value;
+        const metodo = document.getElementById('cobro-metodo').value;
+        const propina = document.getElementById('cobro-propina').value || '0';
+        const referencia = document.getElementById('cobro-referencia').value.trim();
+
+        if (!ordenId) {
+            mostrarErrorCobro('Seleccione una orden en curso para cobrar.');
+            return;
+        }
+        if (!monto || parseFloat(monto) <= 0) {
+            mostrarErrorCobro('Ingrese un monto válido mayor a 0.');
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirmar-cobro');
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Procesando...</span>';
+        if (window.lucide) lucide.createIcons({ root: btn });
+
+        try {
+            const resp = await fetch(`${API_BASE}ordenes/${ordenId}/registrar-pago/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': (document.querySelector('[name=csrfmiddlewaretoken]') || {}).value || '',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    metodo_pago: metodo,
+                    monto: monto,
+                    propina: propina,
+                    referencia_transaccion: referencia
+                })
+            });
+            const data = await resp.json();
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Registrar Pago</span>';
+            if (window.lucide) lucide.createIcons({ root: btn });
+
+            if (resp.ok && data.success) {
+                if (window.showToast) {
+                    window.showToast(
+                        `Pago registrado. ${data.orden_completada ? 'Orden completada.' : `Saldo pendiente: $${data.saldo_pendiente}`}`,
+                        'success'
+                    );
+                }
+                cerrarModalCobro();
+                document.body.dispatchEvent(new Event('orderUpdated'));
+            } else {
+                // Capturar y desplegar el mensaje de error retornado por la API
+                mostrarErrorCobro(data.error || 'Error al registrar el pago.');
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Registrar Pago</span>';
+            if (window.lucide) lucide.createIcons({ root: btn });
+            console.error('Error registrando pago:', e);
+            mostrarErrorCobro('Error de conexión al registrar el pago.');
+        }
+    }
+
+    document.getElementById('cobro-orden-select').addEventListener('change', actualizarDetalleOrden);
 </script>
 {% endblock %}
