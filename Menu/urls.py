@@ -9,6 +9,7 @@ Provides:
 from functools import wraps
 from django.urls import path, include
 from . import views
+from .viewsets import router as api_router
 
 app_name = 'Menu'
 
@@ -93,6 +94,11 @@ urlpatterns = [
     # 2.1 Centralized Authentication Portal
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+
+    # 2.1-bis DRF API (Sección 7 AGENTS.md)
+    # Tenant se resuelve vía /r/<slug>/... (Tier 1) o header X-Tenant-Slug / sesión.
+    path('api/', include(api_router.urls)),
+    path('r/<slug:slug>/api/', include(api_router.urls)),
 
     # 2.2 Canonical Tenant Root: /r/<slug>/...
     path('r/<slug:slug>/', include(tenant_patterns)),
