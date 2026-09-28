@@ -4,7 +4,7 @@ from django.conf import settings
 from .models import (
     Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock,
     Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa,
-    get_restaurante_de_usuario
+    CredencialRestaurante, get_restaurante_de_usuario
 )
 from django.http import JsonResponse, Http404, HttpResponseForbidden
 from django.contrib import messages
@@ -35,18 +35,23 @@ def get_current_restaurante(request=None) -> Restaurante:
     """
     Obtiene el restaurante activo siguiendo la jerarquía:
     1. request.restaurante (inyectado por TenantMiddleware)
-    2. ContextVar current_tenant (vía get_current_tenant())
-    3. request.session['active_tenant_slug'] si request está disponible
-    4. Fallback a inquilino base 'Mainch'
+    2. request.session['restaurante_id'] (sesión de restaurante validada)
+    3. ContextVar current_tenant (vía get_current_tenant())
+    4. request.session['active_tenant_slug'] si request está disponible
+    5. Fallback a inquilino base 'Mainch' (legacy para vistas no operativas)
+
+    Nota: NO deriva el tenant desde request.user (PerfilAdministrador), para no
+    fusionar la sesión de restaurante con la cuenta de administrador.
     """
     if request is not None and hasattr(request, 'restaurante') and request.restaurante:
         return request.restaurante
 
-    # Administrador autenticado vinculado a un único restaurante (tenant forzado).
-    if request is not None and hasattr(request, 'user') and request.user.is_authenticated:
-        user_restaurante = get_restaurante_de_usuario(request.user)
-        if user_restaurante is not None:
-            return user_restaurante
+    if request is not None and hasattr(request, 'session'):
+        restaurante_id = request.session.get('restaurante_id')
+        if restaurante_id:
+            r = Restaurante.objects.filter(id=restaurante_id, activo=True).first()
+            if r:
+                return r
 
     from Menu.tenant_context import get_current_tenant
     ctx_tenant = get_current_tenant()
@@ -67,6 +72,52 @@ def get_current_restaurante(request=None) -> Restaurante:
             defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile", "activo": True}
         )
     return restaurante
+
+
+def get_restaurante_sesion(request):
+    """
+    Retorna el restaurante de la sesión operativa (Nivel 1) o None.
+    La sesión de restaurante es la única fuente de tenant para vistas operativas.
+    """
+    if not hasattr(request, "session"):
+        return None
+    restaurante_id = request.session.get("restaurante_id")
+    if not restaurante_id:
+        return None
+    return Restaurante.objects.filter(id=restaurante_id, activo=True).first()
+
+
+def restaurante_session_required(view_func):
+    """
+    Guard de Nivel 1: exige una sesión activa de restaurante (login_restaurante)
+    para acceder a vistas operativas (KDS, POS, caja/turnos).
+    - Peticiones API/AJAX sin sesión -> 401.
+    - Peticiones web sin sesión -> redirect a login_restaurante con next.
+    """
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if get_restaurante_sesion(request) is not None:
+            return view_func(request, *args, **kwargs)
+
+        is_ajax = (
+            (hasattr(request, "headers") and request.headers.get("x-requested-with") == "XMLHttpRequest")
+            or (hasattr(request, "headers") and request.headers.get("HX-Request") == "true")
+            or getattr(request, "content_type", "") == "application/json"
+            or (hasattr(request, "headers") and "application/json" in request.headers.get("Accept", ""))
+            or (hasattr(request, "path") and "/api/" in request.path)
+        )
+        if is_ajax:
+            return JsonResponse({
+                "success": False,
+                "error": "No hay una sesión de restaurante activa.",
+                "message": "Debe iniciar sesión de restaurante.",
+                "code": "RESTAURANT_SESSION_REQUIRED",
+            }, status=401)
+
+        from django.urls import reverse
+        login_url = reverse("Menu:login_restaurante")
+        return redirect(f"{login_url}?next={request.path}")
+    return _wrapped_view
 
 
 
@@ -119,58 +170,141 @@ def admin_required(view_func):
                 "message": "Acceso restringido. Solo el administrador puede realizar esta acción."
             }, status=403)
         messages.warning(request, "Acceso restringido a administradores. Inicia sesión para continuar.")
-        return redirect(f"/login/?next={request.path}")
+        return redirect(f"/login_admin/?next={request.path}")
     return _wrapped_view
 
 
-# --------------------------------- AUTENTICACIÓN ADMIN ---------------------------------
+# --------------------------------- AUTENTICACIÓN NIVEL 1 (RESTAURANTE) ---------------------------------
 
-def login_view(request):
-    """Vista visual de loggeo para el dueño / administrador."""
-    next_url = request.GET.get('next') or request.POST.get('next') or 'Menu:crud'
+def login_restaurante(request):
+    """Nivel 1: autenticación del local (Restaurante) y fijación de su sesión operativa."""
+    next_url = request.GET.get('next') or request.POST.get('next') or 'Menu:inicio'
     error = None
 
-    if request.user.is_authenticated and request.user.is_staff:
+    if get_restaurante_sesion(request) is not None:
         return redirect(next_url)
 
     if request.method == "POST":
         usuario = request.POST.get("username", "").strip()
         clave = request.POST.get("password", "").strip()
 
-        user = authenticate(request, username=usuario, password=clave)
-        if user is not None:
-            if user.is_staff or user.is_superuser:
-                login(request, user)
+        credencial = CredencialRestaurante.objects.filter(
+            usuario=usuario, restaurante__activo=True
+        ).select_related("restaurante").first()
+        if credencial is not None and credencial.check_password(clave):
+            restaurante = credencial.restaurante
+            if hasattr(request, "session"):
+                request.session["restaurante_id"] = restaurante.id
+                request.session["active_tenant_slug"] = restaurante.slug
+                # Al cambiar de local, purgar cualquier contexto operativo residual.
+                for key in (
+                    "cajero_id", "cajero_nombre", "cajero_bloqueado",
+                    "turno_id", "terminal_bloqueado_hasta",
+                ):
+                    request.session.pop(key, None)
+            messages.success(request, f"Bienvenido(a) a {restaurante.nombre}.")
+            return redirect(next_url)
 
-                # Fijar el tenant del administrador en sesión (tenancy forzado).
-                restaurante_admin = get_restaurante_de_usuario(user)
-                if restaurante_admin is not None and hasattr(request, "session"):
-                    request.session["active_tenant_slug"] = restaurante_admin.slug
+        error = "Credenciales de restaurante inválidas. Verifica usuario y contraseña."
 
-                messages.success(request, f"¡Bienvenido(a) Administrador(a) {user.username}!")
-                return redirect(next_url)
-            else:
-                error = "El usuario ingresado no cuenta con privilegios de Administrador."
-        else:
-            error = "Usuario o contraseña incorrectos. Verifica tus credenciales."
-
-    return render(request, "Menu/login.html", {
+    return render(request, "Menu/login_restaurante.html", {
         "error": error,
         "next_url": next_url,
-        "username": request.POST.get("username", "")
+        "username": request.POST.get("username", ""),
     })
 
 
-def logout_view(request):
-    """Cierra la sesión de administrador y vuelve a la terminal de caja."""
-    if request.user.is_authenticated:
-        logout(request)
-        messages.info(request, "Sesión de administrador cerrada. Terminal operando en Modo Caja.")
+def logout_restaurante(request):
+    """Nivel 1: cierra la sesión del restaurante y limpia caja/turno y admin elevado."""
+    if hasattr(request, "session"):
+        for key in (
+            "restaurante_id",
+            "active_tenant_slug",
+            "cajero_id",
+            "cajero_nombre",
+            "cajero_bloqueado",
+            "turno_id",
+            "terminal_bloqueado_hasta",
+            "_auth_user_id",
+            "_auth_user_backend",
+            "_auth_user_hash",
+            "_auth_user_backend_hash",
+        ):
+            request.session.pop(key, None)
+    messages.info(request, "Sesión de restaurante cerrada correctamente.")
+    return redirect("Menu:login_restaurante")
+
+
+# --------------------------------- AUTENTICACIÓN NIVEL 2 (ADMINISTRADOR) ---------------------------------
+
+def login_admin(request):
+    """
+    Nivel 2: elevación a administrador, restringida al restaurante en sesión.
+    - Exige sesión activa de restaurante.
+    - El PerfilAdministrador debe coincidir con el restaurante de la sesión.
+    - No altera la sesión operativa ni el turno de caja.
+    """
+    next_url = request.GET.get('next') or request.POST.get('next') or 'Menu:inicio'
+    error = None
+
+    # 1. Debe existir sesión activa de restaurante.
+    restaurante = get_restaurante_sesion(request)
+    if restaurante is None:
+        return HttpResponseForbidden(
+            "Acceso denegado: no hay una sesión de restaurante activa."
+        )
+
+    # Ya elevado como administrador del restaurante correcto.
+    if request.user.is_authenticated and request.user.is_staff:
+        admin_restaurante = get_restaurante_de_usuario(request.user)
+        if admin_restaurante is not None and admin_restaurante.id == restaurante.id:
+            return redirect(next_url)
+
+    if request.method == "POST":
+        usuario = request.POST.get("username", "").strip()
+        clave = request.POST.get("password", "").strip()
+
+        user = authenticate(request, username=usuario, password=clave)
+        if user is not None and (user.is_staff or user.is_superuser):
+            admin_restaurante = get_restaurante_de_usuario(user)
+            if admin_restaurante is None or admin_restaurante.id != restaurante.id:
+                return HttpResponseForbidden(
+                    "Prohibido: credenciales no corresponden a este restaurante."
+                )
+
+            login(request, user)
+            # Importante: NO se toca restaurante_id/active_tenant_slug; la sesión
+            # operativa del restaurante y el turno de caja permanecen intactos.
+            messages.success(request, f"Bienvenido(a) Administrador(a) {user.username}.")
+            return redirect(next_url)
+
+        error = "Credenciales de administrador inválidas o sin privilegios."
+
+    return render(request, "Menu/login_admin.html", {
+        "error": error,
+        "next_url": next_url,
+        "username": request.POST.get("username", ""),
+        "restaurante": restaurante,
+    })
+
+
+def logout_admin(request):
+    """Nivel 2: cierra solo la sesión de administrador; preserva restaurante y turno."""
+    if hasattr(request, "session"):
+        for key in (
+            "_auth_user_id",
+            "_auth_user_backend",
+            "_auth_user_hash",
+            "_auth_user_backend_hash",
+        ):
+            request.session.pop(key, None)
+    messages.info(request, "Sesión de administrador cerrada. Terminal operando en Modo Caja.")
     return redirect("Menu:inicio")
 
 
 
 # ---------------------------------   INICIO  -----------------------------------------------
+@restaurante_session_required
 def inicio(request):
     restaurante = get_current_restaurante(request)
     pedidos_qs = (
@@ -415,6 +549,7 @@ def eliminar_orden(request, id=None):
 # -------------------------- GENERAR ORDENES Y VERLAS --------------------
 
 # Crear una Orden
+@restaurante_session_required
 @terminal_active_required
 def crear_orden(request):
     restaurante = getattr(request, 'restaurante', None)
@@ -1838,7 +1973,7 @@ def desactivar_terminal_view(request, slug=None):
             restaurante=restaurante
         ).update(activo=False)
 
-    response = redirect("/login/")
+    response = redirect("/login_restaurante/")
     clear_terminal_cookie(response)
     messages.info(request, "Dispositivo desvinculado exitosamente. La terminal ya no tiene acceso operativo.")
     return response
@@ -1848,6 +1983,7 @@ def desactivar_terminal_view(request, slug=None):
 # LAYER 2: CASHIER AND SHIFT API ENDPOINTS (M7)
 # =============================================================================
 
+@restaurante_session_required
 def api_cajeros_disponibles(request, slug=None):
     """Retorna la lista de cajeros activos para el restaurante en contexto."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -1865,6 +2001,7 @@ def api_cajeros_disponibles(request, slug=None):
     return JsonResponse({"success": True, "cajeros": data})
 
 
+@restaurante_session_required
 def api_cajero_desbloquear(request, slug=None):
     """Valida el PIN de 4 dígitos de un cajero y desbloquea la terminal."""
     if request.method != "POST":
@@ -1885,18 +2022,15 @@ def api_cajero_desbloquear(request, slug=None):
     except (ValueError, TypeError):
         return JsonResponse({"success": False, "error": "ID de cajero inválido."}, status=400)
 
-    is_tenant_scoped = request.path.startswith("/r/")
-    if is_tenant_scoped:
-        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
-    else:
-        cajero_obj = Cajero.all_objects.filter(id=cajero_id_int, activo=True).first()
-        restaurante = cajero_obj.restaurante if cajero_obj else (getattr(request, 'restaurante', None) or get_current_restaurante(request))
+    # El restaurante proviene de la sesión de restaurante (Nivel 1), nunca del cajero del body.
+    restaurante = get_restaurante_sesion(request) or get_current_restaurante(request)
 
     from Menu.services.auth_service import verify_and_unlock_cashier
     success, resp_data, status_code = verify_and_unlock_cashier(request, restaurante, cajero_id_int, str(pin))
     return JsonResponse(resp_data, status=status_code)
 
 
+@restaurante_session_required
 def api_cajero_bloquear(request, slug=None):
     """Bloquea inmediatamente la pantalla / sesión de la terminal."""
     if request.method != "POST":
@@ -1907,6 +2041,7 @@ def api_cajero_bloquear(request, slug=None):
     return JsonResponse(resp)
 
 
+@restaurante_session_required
 def api_cajero_estado(request, slug=None):
     """Retorna el estado de bloqueo y la información del cajero/turno actual en sesión."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -1932,6 +2067,51 @@ def api_cajero_estado(request, slug=None):
     })
 
 
+@restaurante_session_required
+def api_cajero_salir(request, slug=None):
+    """
+    Salida controlada del cajero (Nivel 1):
+    - Si el cajero en sesión tiene un turno ABIERTO -> 400 (debe cerrar caja formalmente).
+    - Si solo ingresó su PIN pero no abrió turno -> limpia la sesión de cajero y retorna 200.
+    """
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    restaurante = get_restaurante_sesion(request) or get_current_restaurante(request)
+    cajero_id = request.session.get('cajero_id') if hasattr(request, "session") else None
+
+    if not cajero_id:
+        return JsonResponse({"success": True, "message": "No hay cajero en sesión."})
+
+    try:
+        cajero = Cajero.all_objects.filter(id=int(cajero_id), restaurante=restaurante).first()
+    except (TypeError, ValueError):
+        cajero = None
+
+    if cajero is None:
+        return JsonResponse({"success": False, "error": "Cajero no encontrado en el restaurante activo."}, status=404)
+
+    turno_abierto = TurnoCaja.all_objects.filter(
+        restaurante=restaurante,
+        cajero=cajero,
+        estado=TurnoCaja.ESTADO_ABIERTO,
+    ).first()
+
+    if turno_abierto is not None:
+        return JsonResponse({
+            "success": False,
+            "error": "No puede salir con un turno de caja abierto. Debe realizar el cierre formal de caja.",
+        }, status=400)
+
+    # No hay turno abierto: liberar la sesión de cajero.
+    if hasattr(request, "session"):
+        for key in ("cajero_id", "cajero_nombre", "cajero_bloqueado", "turno_id", "terminal_bloqueado_hasta"):
+            request.session.pop(key, None)
+
+    return JsonResponse({"success": True, "message": f"Cajero '{cajero.nombre}' salió correctamente."})
+
+
+@restaurante_session_required
 def api_turno_abrir(request, slug=None):
     """Abre un nuevo turno de caja con fondo inicial."""
     if request.method != "POST":
@@ -1942,7 +2122,8 @@ def api_turno_abrir(request, slug=None):
     except Exception:
         body = request.POST
 
-    cajero_id = body.get("cajero_id") or (request.session.get('cajero_id') if hasattr(request, "session") else None)
+    # El cajero debe estar identificado en la sesión (desbloqueo por PIN); nunca desde el body.
+    cajero_id = request.session.get('cajero_id') if hasattr(request, "session") else None
     if not cajero_id:
         return JsonResponse({"success": False, "error": "Debe identificarse un cajero para abrir turno."}, status=400)
 
@@ -1951,13 +2132,8 @@ def api_turno_abrir(request, slug=None):
     except (ValueError, TypeError):
         return JsonResponse({"success": False, "error": "ID de cajero inválido."}, status=400)
 
-    is_tenant_scoped = request.path.startswith("/r/")
-    if is_tenant_scoped:
-        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
-        cajero = Cajero.all_objects.filter(id=cajero_id_int, restaurante=restaurante, activo=True).first()
-    else:
-        cajero = Cajero.all_objects.filter(id=cajero_id_int, activo=True).first()
-        restaurante = cajero.restaurante if cajero else (getattr(request, 'restaurante', None) or get_current_restaurante(request))
+    restaurante = get_restaurante_sesion(request) or get_current_restaurante(request)
+    cajero = Cajero.all_objects.filter(id=cajero_id_int, restaurante=restaurante, activo=True).first()
 
     if not cajero:
         return JsonResponse({"success": False, "error": "Cajero no encontrado en este restaurante."}, status=404)
@@ -2011,6 +2187,7 @@ def api_turno_abrir(request, slug=None):
     })
 
 
+@restaurante_session_required
 def api_turno_cerrar(request, slug=None):
     """Cierra el turno de caja activo, calculando ventas en efectivo y diferencia de arqueo."""
     if request.method != "POST":
@@ -2024,31 +2201,18 @@ def api_turno_cerrar(request, slug=None):
     turno_id = body.get("turno_id") or (request.session.get('turno_id') if hasattr(request, "session") else None)
     cajero_id = body.get("cajero_id") or (request.session.get('cajero_id') if hasattr(request, "session") else None)
 
-    is_tenant_scoped = request.path.startswith("/r/")
+    restaurante = get_restaurante_sesion(request) or get_current_restaurante(request)
     turno = None
-    if is_tenant_scoped:
-        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
-        if turno_id:
-            try:
-                turno = TurnoCaja.all_objects.filter(id=int(turno_id), restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO).first()
-            except Exception:
-                turno = None
-        if not turno and cajero_id:
-            try:
-                turno = TurnoCaja.all_objects.filter(cajero_id=int(cajero_id), restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO).first()
-            except Exception:
-                turno = None
-    else:
-        if turno_id:
-            try:
-                turno = TurnoCaja.all_objects.filter(id=int(turno_id), estado=TurnoCaja.ESTADO_ABIERTO).first()
-            except Exception:
-                turno = None
-        if not turno and cajero_id:
-            try:
-                turno = TurnoCaja.all_objects.filter(cajero_id=int(cajero_id), estado=TurnoCaja.ESTADO_ABIERTO).first()
-            except Exception:
-                turno = None
+    if turno_id:
+        try:
+            turno = TurnoCaja.all_objects.filter(id=int(turno_id), restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO).first()
+        except Exception:
+            turno = None
+    if not turno and cajero_id:
+        try:
+            turno = TurnoCaja.all_objects.filter(cajero_id=int(cajero_id), restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO).first()
+        except Exception:
+            turno = None
 
     if not turno:
         return JsonResponse({"success": False, "error": "No se encontró ningún turno abierto para cerrar."}, status=404)

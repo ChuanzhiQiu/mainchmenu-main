@@ -65,12 +65,12 @@ class UIPrivilegeEscalationTests(TestCase):
     def test_anonimo_get_cajeros_redirige_a_login(self):
         resp = self.client.get("/cajeros/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login/", resp.url)
+        self.assertIn("/login_admin/", resp.url)
 
     def test_anonimo_get_cajeros_canonical_redirige_a_login(self):
         resp = self.client.get(f"/r/{self.tenant.slug}/cajeros/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login/", resp.url)
+        self.assertIn("/login_admin/", resp.url)
 
     def test_anonimo_post_crear_cajero_devuelve_403_sin_mutacion(self):
         resp = self.client.post(
@@ -102,13 +102,13 @@ class UIPrivilegeEscalationTests(TestCase):
         self.client.login(username="ui_cajero_sec", password="password123")
         resp = self.client.get("/cajeros/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login/", resp.url)
+        self.assertIn("/login_admin/", resp.url)
 
     def test_no_admin_get_cajeros_canonical_redirige_a_login(self):
         self.client.login(username="ui_cajero_sec", password="password123")
         resp = self.client.get(f"/r/{self.tenant.slug}/cajeros/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login/", resp.url)
+        self.assertIn("/login_admin/", resp.url)
 
     def test_no_admin_post_crear_cajero_devuelve_403_sin_mutacion(self):
         self.client.login(username="ui_cajero_sec", password="password123")
@@ -251,6 +251,11 @@ class MesaCrossTenantOrderCreationTests(TestCase):
         )
         self.client.login(username="mesa_admin_sec", password="password123")
 
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
+
         self.plato_a = Plato.objects.create(
             restaurante=self.tenant_a, nombre="Plato A Sec", valor=Decimal("5000.00")
         )
@@ -322,6 +327,11 @@ class TenantNavigationSpoofingTests(TestCase):
         # Vinculación unívoca Admin -> Restaurante A
         PerfilAdministrador.objects.create(user=self.admin, restaurante=self.tenant_a)
         self.client.login(username="nav_admin_sec", password="password123")
+
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
 
         self.cajero_a = Cajero.objects.create(
             restaurante=self.tenant_a,

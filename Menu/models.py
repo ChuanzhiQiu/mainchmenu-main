@@ -55,6 +55,41 @@ class Restaurante(models.Model):
         super().save(*args, **kwargs)
 
 
+class CredencialRestaurante(models.Model):
+    """
+    Credenciales de acceso del local (Nivel 1: sesión de restaurante).
+    Se modelan aparte para no alterar la tabla de tenants y mantener la
+    separación estricta con la cuenta de administrador (Nivel 2).
+    """
+    restaurante = models.OneToOneField(
+        Restaurante,
+        on_delete=models.CASCADE,
+        related_name="credenciales",
+        verbose_name="Restaurante"
+    )
+    usuario = models.CharField(max_length=100, unique=True, verbose_name="Usuario del Local")
+    password_hash = models.CharField(max_length=128, verbose_name="Contraseña del Local (hash)")
+    creado_el = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de Creación")
+
+    objects = models.Manager()
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = 'all_objects'
+        verbose_name = "Credencial de Restaurante"
+        verbose_name_plural = "Credenciales de Restaurante"
+
+    def __str__(self):
+        return f"{self.usuario} -> {self.restaurante.nombre}"
+
+    def set_password(self, raw_password):
+        self.password_hash = make_password(raw_password)
+
+    def check_password(self, raw_password) -> bool:
+        if not self.password_hash:
+            return False
+        return check_password(raw_password, self.password_hash)
+
 
 def get_default_restaurante():
     """Retorna o crea el restaurante por defecto 'Mainch'."""

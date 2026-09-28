@@ -38,6 +38,11 @@ class TurnoRequeridoEnCrearOrdenTests(TestCase):
         )
         PerfilAdministrador.objects.create(user=self.admin, restaurante=self.tenant)
 
+        session = self.client.session
+        session["restaurante_id"] = self.tenant.id
+        session["active_tenant_slug"] = self.tenant.slug
+        session.save()
+
     def _payload(self):
         return {
             "cliente": "Cliente Turno",
@@ -113,6 +118,11 @@ class TenancyEstrictaOrdenTests(TestCase):
         )
         PerfilAdministrador.objects.create(user=self.admin, restaurante=self.tenant_a)
         self.client.login(username="estricto_admin", password="password123")
+
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
 
         self.plato_b = Plato.objects.create(
             restaurante=self.tenant_b, nombre="Plato B Estricto", valor=Decimal("4000.00")

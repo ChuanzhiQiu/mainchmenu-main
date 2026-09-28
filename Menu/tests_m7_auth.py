@@ -99,6 +99,12 @@ class Layer1TerminalSecurityTests(TestCase):
         )
         self.client.cookies[TERMINAL_COOKIE_NAME] = token_a
 
+        # Sesión de restaurante A activa; el slug de B es ajeno a la sesión.
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante_a.id
+        session["active_tenant_slug"] = self.restaurante_a.slug
+        session.save()
+
         # Intentar acceder al POS canónico de Tenant B
         url_b = f"/r/{self.restaurante_b.slug}/pos/"
         resp = self.client.get(url_b, HTTP_ACCEPT="application/json")
@@ -170,6 +176,11 @@ class Layer2CashierPINAndLockoutTests(TestCase):
         )
         self.cajero.set_pin("1234")
         self.cajero.save()
+
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante.id
+        session["active_tenant_slug"] = self.restaurante.slug
+        session.save()
 
     def test_cajero_pbkdf2_pin_hashing(self):
         """El PIN se almacena como hash PBKDF2 y nunca en texto plano."""
@@ -258,8 +269,8 @@ class Layer2CashierPINAndLockoutTests(TestCase):
             data=json.dumps({"cajero_id": self.cajero.id, "pin": "1234"}),
             content_type="application/json"
         )
-        # Cajero no pertenece al tenant -> 404 No encontrado
-        self.assertEqual(resp.status_code, 404)
+        # Cajero/sesión del Restaurante A no puede operar contra el slug del Restaurante B -> 403.
+        self.assertEqual(resp.status_code, 403)
 
 
 class ShiftLifecycleAndArqueoTests(TestCase):
@@ -277,6 +288,11 @@ class ShiftLifecycleAndArqueoTests(TestCase):
         self.supervisor = User.objects.create_superuser(
             username="super_shift", password="password123"
         )
+
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante.id
+        session["active_tenant_slug"] = self.restaurante.slug
+        session.save()
 
         self.plato = Plato.objects.create(
             restaurante=self.restaurante, nombre="Hamburguesa Clásica", valor=10000.0
@@ -402,6 +418,11 @@ class POSScreenLockAndOrderAttributionTests(TestCase):
         )
         self.cajero.set_pin("5555")
         self.cajero.save()
+
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante.id
+        session["active_tenant_slug"] = self.restaurante.slug
+        session.save()
         self.plato = Plato.objects.create(
             restaurante=self.restaurante, nombre="Croissant", valor=3500.0
         )

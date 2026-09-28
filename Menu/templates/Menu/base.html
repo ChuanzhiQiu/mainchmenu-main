@@ -200,6 +200,16 @@
                     <!-- Rol & Auth Controls -->
                     <div class="h-6 w-px bg-slate-800 mx-1 hidden sm:block"></div>
 
+                    {% if current_tenant %}
+                    <a href="{% url 'Menu:logout_restaurante' %}"
+                       class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 transition inline-flex items-center gap-1.5"
+                       title="Cerrar Sesión de Restaurante">
+                        <i data-lucide="store" class="w-3.5 h-3.5"></i>
+                        <span class="hidden md:inline">Cerrar Restaurante</span>
+                        <span class="md:hidden">Salir</span>
+                    </a>
+                    {% endif %}
+
                     {% if user.is_authenticated and user.is_staff %}
                     <div class="flex items-center gap-2">
                         <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -207,9 +217,9 @@
                             <span class="hidden md:inline">{{ user.username }} (Admin)</span>
                             <span class="md:hidden">Admin</span>
                         </span>
-                        <a href="{% url 'Menu:logout' %}" 
+                        <a href="{% url 'Menu:logout_admin' %}"
                            class="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
-                           title="Cerrar Sesión / Modo Caja">
+                           title="Cerrar Sesión de Administrador (mantener caja)">
                             <i data-lucide="log-out" class="w-4 h-4"></i>
                         </a>
                     </div>
@@ -219,7 +229,7 @@
                             <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
                             <span>Caja</span>
                         </span>
-                        <a href="{% url 'Menu:login' %}" 
+                        <a href="{% url 'Menu:login_admin' %}"
                            class="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition inline-flex items-center gap-1 shadow-sm">
                             <i data-lucide="lock" class="w-3.5 h-3.5"></i>
                             <span>Admin</span>

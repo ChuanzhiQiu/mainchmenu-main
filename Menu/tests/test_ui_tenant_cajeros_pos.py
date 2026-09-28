@@ -32,6 +32,11 @@ class TenantNavbarContextTests(TestCase):
             username="nav_admin", password="password123", email="nav@test.cl"
         )
 
+        session = self.client.session
+        session["restaurante_id"] = self.tenant.id
+        session["active_tenant_slug"] = self.tenant.slug
+        session.save()
+
     def test_navbar_muestra_tenant_activo(self):
         resp = self.client.get(f"/r/{self.tenant.slug}/pos/")
         self.assertEqual(resp.status_code, 200)
@@ -82,7 +87,7 @@ class CajeroAdminViewTests(TestCase):
         self.client.login(username="cajero_no_admin", password="password123")
         resp = self.client.get(f"/r/{self.tenant.slug}/cajeros/")
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("/login/", resp.url)
+        self.assertIn("/login_admin/", resp.url)
 
 
 class CajeroAdminApiTests(TestCase):
@@ -182,6 +187,11 @@ class PosUiIntegrationTests(TestCase):
             username="pos_admin", password="password123", email="pos@test.cl"
         )
         self.client.login(username="pos_admin", password="password123")
+
+        session = self.client.session
+        session["restaurante_id"] = self.tenant.id
+        session["active_tenant_slug"] = self.tenant.slug
+        session.save()
 
     def test_pos_renderiza_selectores_de_area_mesa_y_modal_cobro(self):
         resp = self.client.get(f"/r/{self.tenant.slug}/pos/")

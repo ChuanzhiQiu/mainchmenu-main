@@ -76,6 +76,11 @@ class TestMilestoneM8EncryptionAndCDN(TestCase):
 
     def test_04_anti_cdn_headers_on_tenant_and_dynamic_routes(self):
         """Verifica la directriz estricta R3: Cache-Control: private, no-store en rutas de tenant y admin."""
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante_a.id
+        session["active_tenant_slug"] = self.restaurante_a.slug
+        session.save()
+
         # 1. Ruta de tenant (/r/gourmet-a/pos/)
         resp = self.client.get(f"/r/{self.restaurante_a.slug}/pos/")
         self.assertEqual(resp.status_code, 200)

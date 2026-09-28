@@ -81,6 +81,7 @@ tenant_patterns = [
     path('api/cajero/desbloquear/', tenant_action(views.api_cajero_desbloquear), name='tenant_api_cajero_desbloquear'),
     path('api/cajero/bloquear/', tenant_action(views.api_cajero_bloquear), name='tenant_api_cajero_bloquear'),
     path('api/cajero/estado/', tenant_action(views.api_cajero_estado), name='tenant_api_cajero_estado'),
+    path('api/cajero/salir/', tenant_action(views.api_cajero_salir), name='tenant_api_cajero_salir'),
     path('api/cajero/desbloquear-supervisor/', tenant_action(views.api_supervisor_desbloquear_cajero), name='tenant_api_supervisor_desbloquear_cajero'),
     path('api/cajeros/crear/', tenant_action(views.api_cajero_crear), name='tenant_api_cajero_crear'),
     path('api/cajeros/toggle-activo/', tenant_action(views.api_cajero_toggle_activo), name='tenant_api_cajero_toggle_activo'),
@@ -94,9 +95,13 @@ tenant_patterns = [
 # 2. MASTER URL PATTERNS (Dual-Routing Registry)
 # ==============================================================================
 urlpatterns = [
-    # 2.1 Centralized Authentication Portal
-    path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
+    # 2.1 Autenticación de dos niveles (Restaurante y Administrador)
+    path('login/', views.login_restaurante, name='login'),
+    path('login_restaurante/', views.login_restaurante, name='login_restaurante'),
+    path('logout_restaurante/', views.logout_restaurante, name='logout_restaurante'),
+    path('login_admin/', views.login_admin, name='login_admin'),
+    path('logout/', views.logout_admin, name='logout'),
+    path('logout_admin/', views.logout_admin, name='logout_admin'),
 
     # 2.1-bis DRF API (Sección 7 AGENTS.md)
     # Tenant se resuelve vía /r/<slug>/... (Tier 1) o header X-Tenant-Slug / sesión.
@@ -112,6 +117,8 @@ urlpatterns = [
 
     # 2.4 Backward-Compatible Legacy Routes (Zero-Redirect Fallback)
     path('', views.inicio, name='inicio'),
+    path('cocina/', views.inicio, name='cocina'),
+    path('pos/', views.crear_orden, name='pos'),
     path('pedidos/crear/', views.crear_orden, name='pedidos_crear'),
     path('orden/crear/', views.crear_orden, name='crear_orden'),
     path('pedidos/<int:id>/confirmar/', views.confirmar_orden, name='confirmar_pedido'),
@@ -145,6 +152,7 @@ urlpatterns = [
     path('api/cajero/desbloquear/', views.api_cajero_desbloquear, name='api_cajero_desbloquear'),
     path('api/cajero/bloquear/', views.api_cajero_bloquear, name='api_cajero_bloquear'),
     path('api/cajero/estado/', views.api_cajero_estado, name='api_cajero_estado'),
+    path('api/cajero/salir/', views.api_cajero_salir, name='api_cajero_salir'),
     path('api/cajero/desbloquear-supervisor/', views.api_supervisor_desbloquear_cajero, name='api_supervisor_desbloquear_cajero'),
     path('api/cajeros/crear/', views.api_cajero_crear, name='api_cajero_crear'),
     path('api/cajeros/toggle-activo/', views.api_cajero_toggle_activo, name='api_cajero_toggle_activo'),

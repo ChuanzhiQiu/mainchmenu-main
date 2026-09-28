@@ -193,12 +193,26 @@ class MultiTenantCoreArchitectureTests(TestCase):
             item_ilegal.clean()
 
     def test_05_canonical_slug_routing_and_views(self):
-        """TC-MT-05: Rutas canónicas /r/<slug>/ responden con 200 y aíslan el catálogo por inquilino."""
+        """TC-MT-05: El slug canónico opera bajo la sesión de restaurante y aísla el catálogo."""
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
+
         resp_a = self.client.get(f"/r/{self.tenant_a.slug}/pos/")
         self.assertEqual(resp_a.status_code, 200)
         content_a = resp_a.content.decode("utf-8")
         self.assertIn("Hamburguesa Clásica A", content_a)
         self.assertNotIn("Double Smash Burger B", content_a)
+
+        # El slug de B es ajeno a la sesión de A -> 403.
+        resp_b_cross = self.client.get(f"/r/{self.tenant_b.slug}/pos/")
+        self.assertEqual(resp_b_cross.status_code, 403)
+
+        # Cambiar la sesión de restaurante a B permite operar en B.
+        session["restaurante_id"] = self.tenant_b.id
+        session["active_tenant_slug"] = self.tenant_b.slug
+        session.save()
 
         resp_b = self.client.get(f"/r/{self.tenant_b.slug}/pos/")
         self.assertEqual(resp_b.status_code, 200)
@@ -206,13 +220,27 @@ class MultiTenantCoreArchitectureTests(TestCase):
         self.assertIn("Double Smash Burger B", content_b)
         self.assertNotIn("Hamburguesa Clásica A", content_b)
 
-    def test_06_legacy_routing_compatibility_zero_redirect(self):
-        """TC-MT-06: Rutas heredadas (/ y /pedidos/crear/) responden con 200 sin redirección HTTP."""
+    def test_06_legacy_routing_requires_restaurant_session(self):
+        """TC-MT-06: Sin sesión de restaurante las rutas operativas redirigen a login_restaurante."""
         resp_root = self.client.get("/")
-        self.assertEqual(resp_root.status_code, 200, "Ruta raíz debe responder 200 sin 301/302")
+        self.assertEqual(resp_root.status_code, 302)
+        self.assertIn("/login_restaurante/", resp_root.url)
 
         resp_pos = self.client.get("/pedidos/crear/")
-        self.assertEqual(resp_pos.status_code, 200, "Ruta legado POS debe responder 200 sin 301/302")
+        self.assertEqual(resp_pos.status_code, 302)
+        self.assertIn("/login_restaurante/", resp_pos.url)
+
+        # Con sesión de restaurante A, las rutas heredadas responden 200.
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
+
+        resp_root = self.client.get("/")
+        self.assertEqual(resp_root.status_code, 200, "Ruta raíz debe responder 200 con sesión de restaurante")
+
+        resp_pos = self.client.get("/pedidos/crear/")
+        self.assertEqual(resp_pos.status_code, 200, "Ruta legado POS debe responder 200 con sesión de restaurante")
 
         resp_inv = self.client.get("/inventario/")
         self.assertEqual(resp_inv.status_code, 200, "Ruta inventario debe responder 200")
@@ -227,6 +255,11 @@ class MultiTenantCoreArchitectureTests(TestCase):
 
     def test_08_anti_cdn_caching_and_vary_headers(self):
         """TC-MT-08: Respuestas dinámicas incluyen headers anti-caching de Edge CDN y Vary."""
+        session = self.client.session
+        session["restaurante_id"] = self.tenant_a.id
+        session["active_tenant_slug"] = self.tenant_a.slug
+        session.save()
+
         resp = self.client.get(f"/r/{self.tenant_a.slug}/pos/")
         self.assertEqual(resp.status_code, 200)
 

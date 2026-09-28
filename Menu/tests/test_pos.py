@@ -594,7 +594,7 @@ class AdminRoleAndRecipeAnalyticsTests(TestCase):
         # Usuario no autenticado / modo caja
         resp_crud = self.client.get("/crud/")
         self.assertEqual(resp_crud.status_code, 302)
-        self.assertIn("/login/", resp_crud.url)
+        self.assertIn("/login_admin/", resp_crud.url)
 
         resp_inv = self.client.get("/inventario/")
         self.assertEqual(resp_inv.status_code, 302)
@@ -690,6 +690,12 @@ class MultiTenancyAndDeliveryIntegrationTests(TestCase):
         )
         self.admin_user.set_password("Mainch1valpo")
         self.admin_user.save()
+
+        # Sesión de restaurante (Nivel 1) requerida por las vistas operativas.
+        session = self.client.session
+        session["restaurante_id"] = self.restaurante_mainch.id
+        session["active_tenant_slug"] = self.restaurante_mainch.slug
+        session.save()
 
         # Plato con precio salón $5.000
         self.plato = Plato.objects.create(
