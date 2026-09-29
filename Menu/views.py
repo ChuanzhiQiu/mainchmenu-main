@@ -1365,6 +1365,16 @@ def data_analisis(request):
         # Ticket Promedio
         ticket_promedio = (total_facturado / total_ordenes_completadas) if total_ordenes_completadas > 0 else 0.0
 
+        # Ítems Promedio por Ticket (Profundidad de Ticket)
+        total_unidades_vendidas = (
+            OrdenItem.objects.filter(orden__in=ordenes_completadas)
+            .aggregate(total=Sum("cantidad"))["total"] or 0
+        )
+        items_promedio = (
+            (total_unidades_vendidas / total_ordenes_completadas)
+            if total_ordenes_completadas > 0 else 0.0
+        )
+
         # 2. Ventas e Ingresos vs Tiempo (Diario)
         ventas_tiempo = (
             ordenes_completadas.annotate(fecha_dia=TruncDay('fecha'))
@@ -1396,6 +1406,48 @@ def data_analisis(request):
         platos_labels = [p['plato__nombre'] for p in platos_vendidos_qs]
         platos_data = [p['cantidad'] for p in platos_vendidos_qs]
         plato_estrella = platos_labels[0] if platos_labels else "Sin ventas aún"
+
+        # 3bis. Desglose Detallado de Ventas por Ítem de Carta (toda la oferta)
+        platos_detalle = list(
+            OrdenItem.objects.filter(
+                orden__in=ordenes_completadas,
+                plato__isnull=False
+            )
+            .values(
+                "plato__id",
+                "plato__nombre",
+                "plato__categoria__nombre"
+            )
+            .annotate(
+                unidades_vendidas=Sum("cantidad"),
+                recaudacion_total=Sum(F("precio_unitario") * F("cantidad"))
+            )
+            .order_by("-recaudacion_total")
+        )
+
+        total_recaudacion_platos = sum(
+            float(item["recaudacion_total"] or 0.0) for item in platos_detalle
+        )
+
+        ventas_por_item = []
+        categorias_items = []
+        for item in platos_detalle:
+            recaudacion = float(item["recaudacion_total"] or 0.0)
+            participacion = (
+                (recaudacion / total_recaudacion_platos * 100.0)
+                if total_recaudacion_platos > 0 else 0.0
+            )
+            categoria = item["plato__categoria__nombre"] or "Sin categoría"
+            ventas_por_item.append({
+                "plato_id": item["plato__id"],
+                "nombre": item["plato__nombre"],
+                "categoria": categoria,
+                "unidades_vendidas": int(item["unidades_vendidas"] or 0),
+                "recaudacion_total": recaudacion,
+                "participacion_ventas": round(participacion, 2),
+            })
+            if categoria not in categorias_items:
+                categorias_items.append(categoria)
 
         # 4. Horas Punta de Venta (Peak Hours: 00:00 a 23:00)
         horas_dict = {h: 0 for h in range(24)}
@@ -1466,6 +1518,8 @@ def data_analisis(request):
         ordenes_canceladas_count = 0
         ticket_promedio = 0.0
         total_descuentos = 0.0
+        total_unidades_vendidas = 0
+        items_promedio = 0.0
         plato_estrella = "N/A"
         hora_pico = "N/A"
         ventas_tiempo_labels = []
@@ -1474,6 +1528,8 @@ def data_analisis(request):
         ingresos_tiempo_data = []
         platos_labels = []
         platos_data = []
+        ventas_por_item = []
+        categorias_items = []
         horas_labels = []
         horas_data = []
         tipos_pago_labels = []
@@ -1501,6 +1557,8 @@ def data_analisis(request):
         "total_ordenes_todas": total_ordenes_todas,
         "ordenes_canceladas_count": ordenes_canceladas_count,
         "ticket_promedio": round(ticket_promedio, 2),
+        "items_promedio": round(items_promedio, 2),
+        "total_unidades_vendidas": total_unidades_vendidas,
         "total_descuentos": total_descuentos,
         "plato_estrella": plato_estrella,
         "hora_pico": hora_pico,
@@ -1526,6 +1584,8 @@ def data_analisis(request):
         "ingresos_tiempo_data": json.dumps(ingresos_tiempo_data),
         "platos_labels": json.dumps(platos_labels),
         "platos_data": json.dumps(platos_data),
+        "ventas_por_item": ventas_por_item,
+        "categorias_items": categorias_items,
         "horas_labels": json.dumps(horas_labels),
         "horas_data": json.dumps(horas_data),
         "tipos_pago_labels": json.dumps(tipos_pago_labels),
