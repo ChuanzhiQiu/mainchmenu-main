@@ -290,12 +290,20 @@
                         <h2 class="text-xl font-bold tracking-tight text-white">
                             Sugerencias de Compra Inteligentes con IA
                         </h2>
-                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-purple-500/40 text-purple-200 border border-purple-400/30">
-                            Milestone 4 Ready
+                        {% if ia_activa %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
+                            <i data-lucide="cpu" class="w-3 h-3"></i>
+                            Modelo: {{ ia_modelo }}
                         </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-amber-500/30 text-amber-200 border border-amber-400/40">
+                            <i data-lucide="wifi-off" class="w-3 h-3"></i>
+                            Sin API de IA conectada
+                        </span>
+                        {% endif %}
                     </div>
                     <p class="text-sm text-indigo-200 mt-1 max-w-2xl">
-                        Motor predictivo asistido por LLM y heurística ROP para cálculo automatizado de órdenes de reposición según demanda histórica de ventas y escandallo.
+                        Motor: <span class="font-semibold text-white">{{ ia_motor_label }}</span> — cálculo automatizado de órdenes de reposición según demanda histórica de ventas y escandallo.
                     </p>
                 </div>
             </div>
@@ -315,16 +323,16 @@
         <!-- Vista Previa / Estado Inicial del Contenedor de Recomendaciones -->
         <div id="ai-recommendations-content" class="mt-6">
             <div class="bg-indigo-950/40 border border-indigo-700/50 rounded-xl p-6 text-center">
-                <i data-lucide="brain-circuit" class="w-10 h-10 mx-auto text-indigo-300/70 mb-2"></i>
-                <h3 class="text-base font-semibold text-indigo-100">Módulo de IA en Preparación (Milestone 4)</h3>
+                <i data-lucide="{% if ia_activa %}sparkles{% else %}brain-circuit{% endif %}" class="w-10 h-10 mx-auto text-indigo-300/70 mb-2"></i>
+                <h3 class="text-base font-semibold text-indigo-100">
+                    {% if ia_activa %}Previsión asistida por IA disponible{% else %}Previsión heurística local disponible{% endif %}
+                </h3>
                 <p class="text-xs text-indigo-300/80 mt-1 max-w-lg mx-auto">
-                    Al activar el motor de IA en el Milestone 4, este panel consultará el endpoint 
-                    <code class="px-1.5 py-0.5 bg-indigo-900/60 rounded text-amber-300 font-mono text-[11px]">/inventario/sugerencias-ia/</code>
-                    para desplegar la lista de insumos recomendados a comprar, presupuesto total y justificación de abastecimiento.
+                    Haz clic en "Consultar Previsión IA" para calcular las órdenes de reposición.
                 </p>
                 <div class="mt-4 inline-flex items-center gap-2 text-xs font-mono text-indigo-300/90 bg-indigo-900/50 px-3 py-1.5 rounded-lg border border-indigo-700/40">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Guardrails Pydantic v2 & Fallback ROP listos para integración</span>
+                    <span class="w-2 h-2 rounded-full {% if ia_activa %}bg-emerald-400{% else %}bg-amber-400{% endif %} animate-pulse"></span>
+                    <span>{{ ia_motor_label }}</span>
                 </div>
             </div>
         </div>
@@ -556,6 +564,8 @@
         const presupuesto = Number(data.presupuesto_estimado_total || 0);
         const metodo = (data.metodo || 'HEURISTIC_FALLBACK').toUpperCase();
         const dias = data.periodo_dias || 7;
+        const iaModelo = data.ia_modelo || null;
+        const iaMotorLabel = data.ia_motor_label || (data.ia_activa ? `Asistido por LLM (${iaModelo || 'LLM'}) + Heurística ROP` : 'Heurística ROP Local (Cálculo determinista sin IA externa)');
 
         if (items.length === 0) {
             contenedor.innerHTML = `
@@ -564,7 +574,7 @@
                     <h3 class="text-base font-semibold text-emerald-100">Stock en Niveles Óptimos</h3>
                     <p class="text-xs text-indigo-300/80 mt-1">No se detecta necesidad urgente de reabastecimiento para el horizonte proyectado (${dias} días).</p>
                     <div class="mt-3 text-[11px] font-mono text-indigo-300/70">
-                        Motor: <span class="text-amber-300">${metodo}</span>
+                        Motor: <span class="text-amber-300">${iaMotorLabel}</span>
                     </div>
                 </div>
             `;
@@ -601,8 +611,9 @@
             `;
         }).join('');
 
+        const llmLabel = iaModelo ? `IA LLM Generada · ${iaModelo}` : 'IA LLM Generada';
         const metodoBadge = metodo.includes("LLM") 
-            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/40">IA LLM Generada</span>`
+            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/30 text-purple-200 border border-purple-400/40">${llmLabel}</span>`
             : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40">Heurística ROP</span>`;
 
         contenedor.innerHTML = `

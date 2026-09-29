@@ -24,6 +24,7 @@ from django.db.models.functions import TruncDay, Coalesce
 from collections import Counter
 from Menu.services.inventory_service import descontar_stock_orden
 from Menu.services.delivery_service import procesar_orden_delivery_externa
+from src.ai_forecast.config import detectar_configuracion_ia
 
 from django.contrib.auth import authenticate, login, logout
 from Menu.terminal_auth import terminal_active_required
@@ -1664,6 +1665,7 @@ def inventario_view(request):
         "insumos": insumos,
         "todos_insumos_ajuste": todos_insumos_ajuste,
         "query": query,
+        **detectar_configuracion_ia(),
         "filtro_estado": filtro_estado,
         "mostrar_inactivos": mostrar_inactivos,
         "total_insumos": total_insumos,
@@ -1906,6 +1908,9 @@ def sugerencias_compra_api_view(request):
             data["presupuesto_estimado_total"] = float(data["presupuesto_estimado_total"])
         except (ValueError, TypeError):
             data["presupuesto_estimado_total"] = 0.0
+
+    # Observabilidad de IA (Fase 4): exponer estado del motor en la respuesta JSON.
+    data.update(detectar_configuracion_ia())
 
     return JsonResponse(
         data,
