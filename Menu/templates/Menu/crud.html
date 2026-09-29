@@ -2,7 +2,157 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-    
+
+    <!-- Navegación por pestañas de Edición -->
+    <div class="flex items-center gap-1 p-1 bg-white rounded-2xl shadow-sm border border-slate-200 w-full sm:w-auto overflow-x-auto">
+        <a href="{{ request.path }}?tab=carta" class="{% if tab != 'mesas' %}bg-amber-500 text-slate-950{% else %}text-slate-600 hover:bg-slate-100{% endif %} px-4 py-2 rounded-xl text-sm font-bold transition inline-flex items-center gap-2 whitespace-nowrap">
+            <i data-lucide="chef-hat" class="w-4 h-4"></i>
+            Carta y Cocina
+        </a>
+        <a href="{{ request.path }}?tab=mesas" class="{% if tab == 'mesas' %}bg-amber-500 text-slate-950{% else %}text-slate-600 hover:bg-slate-100{% endif %} px-4 py-2 rounded-xl text-sm font-bold transition inline-flex items-center gap-2 whitespace-nowrap">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i>
+            Salones y Mesas
+        </a>
+    </div>
+
+    {% if tab == 'mesas' %}
+
+    <!-- Encabezado Salones y Mesas -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+            <div class="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-wider mb-1">
+                <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                <span>Distribución Física del Local</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Salones y Mesas</h1>
+            <p class="text-sm text-slate-500 mt-1">Configura los sectores y mesas disponibles para el servicio en salón.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="btn-crear-salon" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-sm hover:shadow transition inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Nuevo Salón</span>
+            </button>
+            <button id="btn-crear-mesa" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl shadow-sm hover:shadow transition inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Nueva Mesa</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Salones / Sectores -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="layout-grid" class="w-5 h-5 text-indigo-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Salones / Sectores</h2>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">{{ areas|length }} salones</span>
+        </div>
+        <div class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for salon in areas %}
+            <div class="rounded-xl border border-slate-200 p-4 flex items-start justify-between gap-3 {% if not salon.activo %}opacity-60{% endif %}">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="map-pin" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
+                        <span class="font-bold text-slate-900 truncate">{{ salon.nombre }}</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Orden: {{ salon.orden }}</p>
+                    {% if salon.activo %}
+                    <span class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <i data-lucide="check-circle-2" class="w-3 h-3"></i> Activo
+                    </span>
+                    {% else %}
+                    <span class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        <i data-lucide="ban" class="w-3 h-3"></i> Inactivo
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <button class="btn-editar-salon p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition" data-id="{{ salon.id }}" data-nombre="{{ salon.nombre }}" data-orden="{{ salon.orden }}" title="Editar salón">
+                        <i data-lucide="edit-2" class="w-4 h-4"></i>
+                    </button>
+                    <button class="btn-toggle-salon p-2 rounded-lg transition {% if salon.activo %}text-rose-500 hover:text-rose-600 hover:bg-rose-50{% else %}text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50{% endif %}" data-id="{{ salon.id }}" data-nombre="{{ salon.nombre }}" data-activo="{{ salon.activo|yesno:'1,0' }}" title="{% if salon.activo %}Desactivar{% else %}Activar{% endif %}">
+                        <i data-lucide="{% if salon.activo %}lock{% else %}unlock{% endif %}" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-span-full py-10 text-center text-slate-400">
+                No hay salones registrados. Haz clic en "Nuevo Salón" para crear el primero.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Mesas -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="utensils" class="w-5 h-5 text-amber-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Mesas</h2>
+            </div>
+            <div class="flex items-center gap-3">
+                <label class="text-xs font-semibold text-slate-500">Filtrar por salón:</label>
+                <select id="filtro-mesa-salon" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white">
+                    <option value="">Todos</option>
+                    {% for salon in areas %}
+                    <option value="{{ salon.id }}">{{ salon.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">{{ mesas|length }} mesas</span>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3 px-6">Número / Código</th>
+                        <th class="py-3 px-6">Salón</th>
+                        <th class="py-3 px-6 text-center">Capacidad</th>
+                        <th class="py-3 px-6">Estado</th>
+                        <th class="py-3 px-6 text-right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for mesa in mesas %}
+                    <tr class="fila-mesa hover:bg-slate-50/80 transition" data-salon-id="{{ mesa.area_id }}">
+                        <td class="py-3.5 px-6 font-bold text-slate-900">{{ mesa.numero }}</td>
+                        <td class="py-3.5 px-6 text-slate-600">{{ mesa.area.nombre }}</td>
+                        <td class="py-3.5 px-6 text-center font-mono text-xs text-slate-700">{{ mesa.capacidad }} comensales</td>
+                        <td class="py-3.5 px-6">
+                            {% if mesa.activo %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Activa
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <i data-lucide="ban" class="w-3.5 h-3.5"></i> Inactiva
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-6 text-right space-x-1">
+                            <button class="btn-editar-mesa inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition" data-id="{{ mesa.id }}" data-numero="{{ mesa.numero }}" data-capacidad="{{ mesa.capacidad }}" data-salon-id="{{ mesa.area_id }}">
+                                <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                                <span>Editar</span>
+                            </button>
+                            <button class="btn-toggle-mesa inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if mesa.activo %}bg-rose-50 hover:bg-rose-100 text-rose-600{% else %}bg-emerald-50 hover:bg-emerald-100 text-emerald-700{% endif %}" data-id="{{ mesa.id }}" data-numero="{{ mesa.numero }}" data-activo="{{ mesa.activo|yesno:'1,0' }}">
+                                <i data-lucide="{% if mesa.activo %}lock{% else %}unlock{% endif %}" class="w-3.5 h-3.5"></i>
+                                <span>{% if mesa.activo %}Desactivar{% else %}Activar{% endif %}</span>
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-slate-400">No hay mesas registradas. Haz clic en "Nueva Mesa" para crear una.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+
     <!-- Encabezado de la página -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
@@ -144,6 +294,7 @@
             </table>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- ==================== MODAL GESTOR DE ESCANDALLO / RECETA ==================== -->
@@ -425,6 +576,71 @@
             <button id="confirmar-eliminar" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition">
                 Sí, Eliminar
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL GESTOR DE SALÓN ==================== -->
+<div id="modal-salon" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
+        <div class="px-6 py-4 bg-indigo-600 text-white flex items-center justify-between">
+            <h3 class="text-base font-extrabold" id="modal-salon-titulo">Nuevo Salón</h3>
+            <button type="button" id="cerrar-modal-salon" class="text-indigo-100 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <input type="hidden" id="salon-id">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Nombre del Salón *</label>
+                <input type="text" id="salon-nombre" placeholder="Ej: Salón Principal" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Orden</label>
+                <input type="number" id="salon-orden" value="0" min="0" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div id="modal-salon-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"></div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" id="cancelar-modal-salon" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">Cancelar</button>
+                <button type="button" id="confirmar-modal-salon" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition">Guardar Salón</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== MODAL GESTOR DE MESA ==================== -->
+<div id="modal-mesa" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
+        <div class="px-6 py-4 bg-amber-500 text-slate-950 flex items-center justify-between">
+            <h3 class="text-base font-extrabold" id="modal-mesa-titulo">Nueva Mesa</h3>
+            <button type="button" id="cerrar-modal-mesa" class="text-amber-800 hover:text-slate-950 transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6 space-y-4">
+            <input type="hidden" id="mesa-id">
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Salón *</label>
+                <select id="mesa-salon" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+                    <option value="">-- Seleccione un salón --</option>
+                    {% for salon in areas %}
+                    <option value="{{ salon.id }}">{{ salon.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Número / Código *</label>
+                <input type="text" id="mesa-numero" placeholder="Ej: M-12" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Capacidad (comensales)</label>
+                <input type="number" id="mesa-capacidad" value="4" min="1" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none">
+            </div>
+            <div id="modal-mesa-error" class="hidden p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold"></div>
+            <div class="flex items-center justify-end gap-2 pt-2">
+                <button type="button" id="cancelar-modal-mesa" class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 transition">Cancelar</button>
+                <button type="button" id="confirmar-modal-mesa" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl transition">Guardar Mesa</button>
+            </div>
         </div>
     </div>
 </div>
@@ -881,6 +1097,192 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (window.lucide) lucide.createIcons();
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const TENANT_SLUG = "{{ restaurante.slug }}";
+    const API_SALON_GUARDAR = `/r/${TENANT_SLUG}/api/salon/guardar/`;
+    const API_SALON_TOGGLE = `/r/${TENANT_SLUG}/api/salon/toggle-activo/`;
+    const API_MESA_GUARDAR = `/r/${TENANT_SLUG}/api/mesa/guardar/`;
+    const API_MESA_TOGGLE = `/r/${TENANT_SLUG}/api/mesa/toggle-activo/`;
+
+    const getCsrfToken = () => {
+        const cookie = document.cookie.split('; ').find(row => row.startsWith('csrftoken='));
+        return cookie ? decodeURIComponent(cookie.split('=')[1]) : '';
+    };
+
+    const csrftoken = getCsrfToken();
+
+    const mostrarError = (id, msg) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    };
+
+    const ocultarError = (id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    };
+
+    const recargar = () => window.location.reload();
+
+    // --------------------------- Salones ---------------------------
+    const modalSalon = document.getElementById('modal-salon');
+    const abrirModalSalon = (salon = null) => {
+        document.getElementById('salon-id').value = salon ? salon.id : '';
+        document.getElementById('salon-nombre').value = salon ? salon.nombre : '';
+        document.getElementById('salon-orden').value = salon ? salon.orden : 0;
+        document.getElementById('modal-salon-titulo').textContent = salon ? 'Editar Salón' : 'Nuevo Salón';
+        ocultarError('modal-salon-error');
+        modalSalon.classList.remove('hidden');
+    };
+    const cerrarModalSalon = () => modalSalon.classList.add('hidden');
+
+    document.getElementById('btn-crear-salon')?.addEventListener('click', () => abrirModalSalon());
+    document.getElementById('cerrar-modal-salon')?.addEventListener('click', cerrarModalSalon);
+    document.getElementById('cancelar-modal-salon')?.addEventListener('click', cerrarModalSalon);
+
+    document.getElementById('confirmar-modal-salon')?.addEventListener('click', async () => {
+        const id = document.getElementById('salon-id').value;
+        const nombre = document.getElementById('salon-nombre').value.trim();
+        const orden = document.getElementById('salon-orden').value;
+        if (!nombre) {
+            mostrarError('modal-salon-error', 'El nombre del salón es obligatorio.');
+            return;
+        }
+        try {
+            const resp = await fetch(API_SALON_GUARDAR, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ id: id || null, nombre, orden })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                if (window.showToast) window.showToast(data.message, 'success');
+                recargar();
+            } else {
+                mostrarError('modal-salon-error', data.error || 'Error al guardar el salón.');
+            }
+        } catch (e) {
+            mostrarError('modal-salon-error', 'Error de conexión al guardar el salón.');
+        }
+    });
+
+    document.querySelectorAll('.btn-editar-salon').forEach(btn => {
+        btn.addEventListener('click', () => abrirModalSalon({ id: btn.dataset.id, nombre: btn.dataset.nombre, orden: btn.dataset.orden }));
+    });
+
+    document.querySelectorAll('.btn-toggle-salon').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm(`¿Desea cambiar el estado del salón "${btn.dataset.nombre}"?`)) return;
+            try {
+                const resp = await fetch(API_SALON_TOGGLE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ id: btn.dataset.id })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    if (window.showToast) window.showToast(data.message, 'success');
+                    recargar();
+                } else {
+                    if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
+                    else alert(data.error || 'Error al cambiar el estado.');
+                }
+            } catch (e) {
+                if (window.showToast) window.showToast('Error de conexión.', 'error');
+            }
+        });
+    });
+
+    // --------------------------- Mesas ---------------------------
+    const modalMesa = document.getElementById('modal-mesa');
+    const abrirModalMesa = (mesa = null) => {
+        document.getElementById('mesa-id').value = mesa ? mesa.id : '';
+        document.getElementById('mesa-salon').value = mesa ? mesa.salonId : '';
+        document.getElementById('mesa-numero').value = mesa ? mesa.numero : '';
+        document.getElementById('mesa-capacidad').value = mesa ? mesa.capacidad : 4;
+        document.getElementById('modal-mesa-titulo').textContent = mesa ? 'Editar Mesa' : 'Nueva Mesa';
+        ocultarError('modal-mesa-error');
+        modalMesa.classList.remove('hidden');
+    };
+    const cerrarModalMesa = () => modalMesa.classList.add('hidden');
+
+    document.getElementById('btn-crear-mesa')?.addEventListener('click', () => abrirModalMesa());
+    document.getElementById('cerrar-modal-mesa')?.addEventListener('click', cerrarModalMesa);
+    document.getElementById('cancelar-modal-mesa')?.addEventListener('click', cerrarModalMesa);
+
+    document.getElementById('confirmar-modal-mesa')?.addEventListener('click', async () => {
+        const id = document.getElementById('mesa-id').value;
+        const salonId = document.getElementById('mesa-salon').value;
+        const numero = document.getElementById('mesa-numero').value.trim();
+        const capacidad = document.getElementById('mesa-capacidad').value;
+        if (!salonId) {
+            mostrarError('modal-mesa-error', 'Debe seleccionar un salón.');
+            return;
+        }
+        if (!numero) {
+            mostrarError('modal-mesa-error', 'El número/código de mesa es obligatorio.');
+            return;
+        }
+        try {
+            const resp = await fetch(API_MESA_GUARDAR, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ id: id || null, salon_id: salonId, numero, capacidad })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                if (window.showToast) window.showToast(data.message, 'success');
+                recargar();
+            } else {
+                mostrarError('modal-mesa-error', data.error || 'Error al guardar la mesa.');
+            }
+        } catch (e) {
+            mostrarError('modal-mesa-error', 'Error de conexión al guardar la mesa.');
+        }
+    });
+
+    document.querySelectorAll('.btn-editar-mesa').forEach(btn => {
+        btn.addEventListener('click', () => abrirModalMesa({ id: btn.dataset.id, salonId: btn.dataset.salonId, numero: btn.dataset.numero, capacidad: btn.dataset.capacidad }));
+    });
+
+    document.querySelectorAll('.btn-toggle-mesa').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (!confirm(`¿Desea cambiar el estado de la mesa "${btn.dataset.numero}"?`)) return;
+            try {
+                const resp = await fetch(API_MESA_TOGGLE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ id: btn.dataset.id })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    if (window.showToast) window.showToast(data.message, 'success');
+                    recargar();
+                } else {
+                    if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
+                    else alert(data.error || 'Error al cambiar el estado.');
+                }
+            } catch (e) {
+                if (window.showToast) window.showToast('Error de conexión.', 'error');
+            }
+        });
+    });
+
+    // Filtro de mesas por salón (cliente).
+    const filtroSalon = document.getElementById('filtro-mesa-salon');
+    if (filtroSalon) {
+        filtroSalon.addEventListener('change', () => {
+            const valor = filtroSalon.value;
+            document.querySelectorAll('.fila-mesa').forEach(fila => {
+                fila.style.display = (!valor || fila.dataset.salonId === valor) ? '' : 'none';
+            });
+        });
+    }
 });
 </script>
 {% endblock %}

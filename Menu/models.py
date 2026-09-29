@@ -1335,6 +1335,7 @@ class Area(models.Model):
     )
     nombre = models.CharField(max_length=100, verbose_name="Nombre")
     activo = models.BooleanField(default=True, verbose_name="Activo")
+    orden = models.PositiveIntegerField(default=0, verbose_name="Orden")
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -1343,7 +1344,7 @@ class Area(models.Model):
         base_manager_name = 'all_objects'
         verbose_name = "Área de Salón"
         verbose_name_plural = "Áreas de Salón"
-        ordering = ['nombre']
+        ordering = ['orden', 'nombre']
 
     def __str__(self):
         return f"{self.nombre} ({self.restaurante.nombre})"
@@ -1388,6 +1389,7 @@ class Mesa(models.Model):
     )
     numero = models.CharField(max_length=20, verbose_name="Número de Mesa")
     capacidad = models.IntegerField(default=4, verbose_name="Capacidad")
+    activo = models.BooleanField(default=True, db_index=True, verbose_name="Activo")
     estado = models.CharField(
         max_length=20,
         choices=ESTADO_CHOICES,
@@ -1403,6 +1405,7 @@ class Mesa(models.Model):
         verbose_name = "Mesa"
         verbose_name_plural = "Mesas"
         ordering = ['area', 'numero']
+        unique_together = ('restaurante', 'numero')
 
     def __str__(self):
         return f"Mesa {self.numero} ({self.restaurante.nombre})"

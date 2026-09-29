@@ -3,7 +3,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.conf import settings
 from .models import (
     Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock,
-    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa,
+    Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa, Area,
     CredencialRestaurante, get_restaurante_de_usuario
 )
 from django.http import JsonResponse, Http404, HttpResponseForbidden
@@ -1183,10 +1183,18 @@ def crud(request):
     platos = Plato.objects.filter(restaurante=restaurante).order_by('id')
     menus = Menu.objects.filter(restaurante=restaurante).order_by('id')
     insumos = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
+    areas = Area.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
+    mesas = Mesa.objects.filter(restaurante=restaurante).select_related('area').order_by(
+        'area__orden', 'area__nombre', 'numero'
+    )
+    tab = request.GET.get('tab', 'carta')
     return render(request, "Menu/crud.html", {
         "platos": platos, 
         "menus": menus,
         "insumos": insumos,
+        "areas": areas,
+        "mesas": mesas,
+        "tab": tab,
         "restaurante": restaurante,
     })
 
@@ -2621,3 +2629,202 @@ def api_cajero_toggle_activo(request):
 
 
 
+
+
+# =============================================================================
+# GESTIÓN DE SALONES Y MESAS (Módulo de Edición - Tenant Scoped)
+# =============================================================================
+
+def _salon_to_dict(salon):
+    return {
+        "id": salon.id,
+        "nombre": salon.nombre,
+        "orden": salon.orden,
+        "activo": salon.activo,
+    }
+
+
+def _mesa_to_dict(mesa):
+    return {
+        "id": mesa.id,
+        "numero": mesa.numero,
+        "capacidad": mesa.capacidad,
+        "activo": mesa.activo,
+        "salon_id": mesa.area_id,
+        "salon_nombre": mesa.area.nombre if mesa.area_id else None,
+    }
+
+
+@admin_required
+def api_salon_guardar(request):
+    """Crea o actualiza un salón/sector del restaurante activo."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    salon_id = body.get("id")
+    nombre = str(body.get("nombre", "")).strip()
+    orden_raw = body.get("orden", 0)
+
+    if not nombre:
+        return JsonResponse({"success": False, "error": "El nombre del salón es obligatorio."}, status=400)
+
+    try:
+        orden = int(orden_raw)
+        if orden < 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return JsonResponse({"success": False, "error": "El orden debe ser un número entero no negativo."}, status=400)
+
+    if salon_id:
+        try:
+            salon = Area.all_objects.get(id=int(salon_id), restaurante=restaurante)
+        except (ValueError, TypeError, Area.DoesNotExist):
+            return JsonResponse({"success": False, "error": "Salón no encontrado en este restaurante."}, status=404)
+        salon.nombre = nombre
+        salon.orden = orden
+        salon.save(update_fields=["nombre", "orden"])
+        msg = f"Salón '{salon.nombre}' actualizado correctamente."
+    else:
+        salon = Area(restaurante=restaurante, nombre=nombre, orden=orden, activo=True)
+        salon.save()
+        msg = f"Salón '{salon.nombre}' creado correctamente."
+
+    return JsonResponse({"success": True, "message": msg, "salon": _salon_to_dict(salon)})
+
+
+@admin_required
+def api_salon_toggle_activo(request):
+    """Activa o desactiva un salón del restaurante activo (nunca DELETE físico)."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    salon_id = body.get("id")
+    if not salon_id:
+        return JsonResponse({"success": False, "error": "ID de salón es obligatorio."}, status=400)
+
+    try:
+        salon = Area.all_objects.get(id=int(salon_id), restaurante=restaurante)
+    except (ValueError, TypeError, Area.DoesNotExist):
+        return JsonResponse({"success": False, "error": "Salón no encontrado en este restaurante."}, status=404)
+
+    salon.activo = not salon.activo
+    salon.save(update_fields=["activo"])
+
+    estado = "activado" if salon.activo else "desactivado"
+    return JsonResponse({
+        "success": True,
+        "message": f"Salón '{salon.nombre}' {estado} correctamente.",
+        "salon": _salon_to_dict(salon),
+    })
+
+
+@admin_required
+def api_mesa_guardar(request):
+    """Crea o actualiza una mesa del restaurante activo, con validación multi-tenant y código único."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    mesa_id = body.get("id")
+    salon_id = body.get("salon_id")
+    numero = str(body.get("numero", "")).strip()
+    capacidad_raw = body.get("capacidad", 4)
+
+    if not salon_id:
+        return JsonResponse({"success": False, "error": "Debe seleccionar un salón."}, status=400)
+    if not numero:
+        return JsonResponse({"success": False, "error": "El número/código de mesa es obligatorio."}, status=400)
+
+    try:
+        salon = Area.all_objects.get(id=int(salon_id), restaurante=restaurante)
+    except (ValueError, TypeError, Area.DoesNotExist):
+        return JsonResponse({"success": False, "error": "Salón no encontrado en este restaurante."}, status=404)
+
+    try:
+        capacidad = int(capacidad_raw)
+        if capacidad <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        return JsonResponse({"success": False, "error": "La capacidad debe ser un número entero mayor a 0."}, status=400)
+
+    # Código de mesa único dentro del mismo restaurante (validación cross-tenant implícita).
+    duplicados = Mesa.all_objects.filter(restaurante=restaurante, numero__iexact=numero)
+    if mesa_id:
+        try:
+            duplicados = duplicados.exclude(id=int(mesa_id))
+        except (ValueError, TypeError):
+            pass
+
+    if duplicados.exists():
+        return JsonResponse({
+            "success": False,
+            "error": f"Ya existe una mesa con el código '{numero}' en este restaurante."
+        }, status=400)
+
+    if mesa_id:
+        try:
+            mesa = Mesa.all_objects.get(id=int(mesa_id), restaurante=restaurante)
+        except (ValueError, TypeError, Mesa.DoesNotExist):
+            return JsonResponse({"success": False, "error": "Mesa no encontrada en este restaurante."}, status=404)
+        mesa.area = salon
+        mesa.numero = numero
+        mesa.capacidad = capacidad
+        mesa.save()
+        msg = f"Mesa '{mesa.numero}' actualizada correctamente."
+    else:
+        mesa = Mesa(restaurante=restaurante, area=salon, numero=numero, capacidad=capacidad, activo=True)
+        try:
+            mesa.save()
+        except IntegrityError:
+            return JsonResponse({
+                "success": False,
+                "error": f"Ya existe una mesa con el código '{numero}' en este restaurante."
+            }, status=400)
+        msg = f"Mesa '{mesa.numero}' creada correctamente."
+
+    return JsonResponse({"success": True, "message": msg, "mesa": _mesa_to_dict(mesa)})
+
+
+@admin_required
+def api_mesa_toggle_activo(request):
+    """Activa o desactiva una mesa del restaurante activo (nunca DELETE físico)."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
+    mesa_id = body.get("id")
+    if not mesa_id:
+        return JsonResponse({"success": False, "error": "ID de mesa es obligatorio."}, status=400)
+
+    try:
+        mesa = Mesa.all_objects.get(id=int(mesa_id), restaurante=restaurante)
+    except (ValueError, TypeError, Mesa.DoesNotExist):
+        return JsonResponse({"success": False, "error": "Mesa no encontrada en este restaurante."}, status=404)
+
+    mesa.activo = not mesa.activo
+    mesa.save(update_fields=["activo"])
+
+    estado = "activada" if mesa.activo else "desactivada"
+    return JsonResponse({
+        "success": True,
+        "message": f"Mesa '{mesa.numero}' {estado} correctamente.",
+        "mesa": _mesa_to_dict(mesa),
+    })
