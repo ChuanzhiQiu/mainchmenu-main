@@ -39,22 +39,26 @@
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        <th class="py-3 px-6">ID</th>
-                        <th class="py-3 px-6">Nombre</th>
-                        <th class="py-3 px-6">Código Empleado</th>
-                        <th class="py-3 px-6">PIN</th>
-                        <th class="py-3 px-6">Estado</th>
+                        <th class="py-3 px-4">ID</th>
+                        <th class="py-3 px-4">Nombre</th>
+                        <th class="py-3 px-4">Código Empleado</th>
+                        <th class="py-3 px-4">PIN</th>
+                        <th class="py-3 px-4">Estado</th>
+                        <th class="py-3 px-4 text-right" title="Suma de órdenes completadas por el cajero">Total Ventas</th>
+                        <th class="py-3 px-4 text-center" title="Órdenes completadas atendidas">Pedidos</th>
+                        <th class="py-3 px-4 text-center" title="Turnos de caja cerrados/completados">Turnos</th>
+                        <th class="py-3 px-4 text-right" title="Venta total / pedidos atendidos">Ticket Promedio</th>
                         <th class="py-3 px-6 text-right">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for cajero in cajeros %}
                     <tr class="hover:bg-slate-50/80 transition" id="fila-cajero-{{ cajero.id }}">
-                        <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ cajero.id }}</td>
-                        <td class="py-3.5 px-6 font-bold text-slate-900">{{ cajero.nombre }}</td>
-                        <td class="py-3.5 px-6 font-mono text-xs text-slate-600">{{ cajero.codigo_empleado|default:"—" }}</td>
-                        <td class="py-3.5 px-6 text-slate-400 text-xs">•••• (hash seguro)</td>
-                        <td class="py-3.5 px-6">
+                        <td class="py-3.5 px-4 font-mono text-xs text-slate-400">#{{ cajero.id }}</td>
+                        <td class="py-3.5 px-4 font-bold text-slate-900">{{ cajero.nombre }}</td>
+                        <td class="py-3.5 px-4 font-mono text-xs text-slate-600">{{ cajero.codigo_empleado|default:"—" }}</td>
+                        <td class="py-3.5 px-4 text-slate-400 text-xs">•••• (hash seguro)</td>
+                        <td class="py-3.5 px-4">
                             {% if cajero.activo %}
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
@@ -67,6 +71,10 @@
                             </span>
                             {% endif %}
                         </td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.total_ventas|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-center font-mono text-xs text-slate-700">{{ cajero.pedidos_count }}</td>
+                        <td class="py-3.5 px-4 text-center font-mono text-xs text-slate-700">{{ cajero.turnos_count }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.ticket_promedio|floatformat:2 }}</td>
                         <td class="py-3.5 px-6 text-right">
                             <button class="btn-toggle-cajero inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if cajero.activo %}bg-rose-50 hover:bg-rose-100 text-rose-600{% else %}bg-emerald-50 hover:bg-emerald-100 text-emerald-700{% endif %}"
                                     data-id="{{ cajero.id }}" data-nombre="{{ cajero.nombre }}" data-activo="{{ cajero.activo|yesno:'1,0' }}">
@@ -77,8 +85,125 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="6" class="py-10 text-center text-slate-400">
+                        <td colspan="10" class="py-10 text-center text-slate-400">
                             No hay cajeros registrados en este restaurante. Haz clic en "Nuevo Cajero" para crear el primero.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Historial de Cierres / Arqueos -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="history" class="w-5 h-5 text-indigo-500"></i>
+                <div>
+                    <h2 class="text-lg font-black text-slate-900">Historial de Cierres / Arqueos</h2>
+                    <p class="text-xs text-slate-500">Turnos finalizados del restaurante, desglose contable y diferencias de caja.</p>
+                </div>
+            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700">
+                {{ total_turnos_cerrados }} turnos cerrados
+            </span>
+        </div>
+
+        <!-- Filtros básicos -->
+        <form method="GET" action="{{ request.path }}" class="px-6 py-4 border-b border-slate-200 bg-white flex flex-col md:flex-row md:items-end gap-3">
+            <div class="flex-1 min-w-[180px]">
+                <label for="filtro-cajero" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Cajero</label>
+                <select id="filtro-cajero" name="cajero_id" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <option value="">Todos los cajeros</option>
+                    {% for cajero in cajeros %}
+                    <option value="{{ cajero.id }}" {% if filtro_cajero_id == cajero.id|stringformat:"s" %}selected{% endif %}>{{ cajero.nombre }}{% if cajero.codigo_empleado %} ({{ cajero.codigo_empleado }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="min-w-[160px]">
+                <label for="filtro-desde" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Desde</label>
+                <input type="date" id="filtro-desde" name="fecha_desde" value="{{ filtro_fecha_desde }}" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div class="min-w-[160px]">
+                <label for="filtro-hasta" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Hasta</label>
+                <input type="date" id="filtro-hasta" name="fecha_hasta" value="{{ filtro_fecha_hasta }}" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition inline-flex items-center gap-1.5">
+                    <i data-lucide="filter" class="w-4 h-4"></i>
+                    Filtrar
+                </button>
+                {% if filtro_cajero_id or filtro_fecha_desde or filtro_fecha_hasta %}
+                <a href="{{ request.path }}" class="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 transition">Limpiar</a>
+                {% endif %}
+            </div>
+        </form>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        <th class="py-3 px-4">Cajero</th>
+                        <th class="py-3 px-4">Apertura</th>
+                        <th class="py-3 px-4">Cierre</th>
+                        <th class="py-3 px-4">Estado</th>
+                        <th class="py-3 px-4 text-right">Monto Inicial</th>
+                        <th class="py-3 px-4 text-right">Ventas Sistema (Efectivo)</th>
+                        <th class="py-3 px-4 text-right">Monto Esperado</th>
+                        <th class="py-3 px-4 text-right">Declarado</th>
+                        <th class="py-3 px-4 text-right">Diferencia</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-sm">
+                    {% for turno in turnos %}
+                    <tr class="hover:bg-indigo-50/30 transition">
+                        <td class="py-3.5 px-4">
+                            <div class="font-bold text-slate-900">{{ turno.cajero.nombre }}</div>
+                            <div class="font-mono text-[11px] text-slate-500">{{ turno.cajero.codigo_empleado|default:"—" }}</div>
+                        </td>
+                        <td class="py-3.5 px-4 font-mono text-xs text-slate-600 whitespace-nowrap">{{ turno.fecha_apertura|date:"d/m/Y H:i" }}</td>
+                        <td class="py-3.5 px-4 font-mono text-xs text-slate-600 whitespace-nowrap">{% if turno.fecha_cierre %}{{ turno.fecha_cierre|date:"d/m/Y H:i" }}{% else %}—{% endif %}</td>
+                        <td class="py-3.5 px-4">
+                            {% if turno.estado == 'FORZADO_SUPERVISOR' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+                                Forzado
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                Cerrado
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_inicial|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.ventas_efectivo_sistema|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ turno.monto_esperado_display|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_final_declarado|floatformat:2|default:"—" }}</td>
+                        <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                            {% if turno.diferencia_display < 0 %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <i data-lucide="trending-down" class="w-3.5 h-3.5"></i>
+                                Faltante ${{ turno.diferencia_display|floatformat:2 }}
+                            </span>
+                            {% elif turno.diferencia_display > 0 %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+                                Sobrante +${{ turno.diferencia_display|floatformat:2 }}
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                Cuadrado $0.00
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" class="py-10 text-center text-slate-400">
+                            No hay turnos cerrados{% if filtro_cajero_id or filtro_fecha_desde or filtro_fecha_hasta %} para los filtros aplicados{% endif %}.
                         </td>
                     </tr>
                     {% endfor %}

@@ -16,9 +16,11 @@ from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError
 from itertools import groupby
 from decimal import Decimal, InvalidOperation
-from django.db.models import Sum, Count, Q, F
-from datetime import datetime, timedelta
-from django.db.models.functions import TruncDay
+from django.db.models import (
+    Sum, Count, Q, F, Value, DecimalField, IntegerField, Subquery, OuterRef
+)
+from datetime import datetime, timedelta, date
+from django.db.models.functions import TruncDay, Coalesce
 from collections import Counter
 from Menu.services.inventory_service import descontar_stock_orden
 from Menu.services.delivery_service import procesar_orden_delivery_externa
@@ -2381,12 +2383,144 @@ def _parse_json_body(request):
 
 @admin_required
 def cajeros_admin_view(request):
-    """Vista administrativa para gestionar el equipo de cajeros del restaurante activo."""
+    """Vista administrativa para gestionar el equipo de cajeros del restaurante activo.
+
+    Incluye:
+    - Métricas consolidadas por cajero (ventas, pedidos, turnos, ticket promedio).
+    - Historial de cierres/arqueos de turnos cerrados con filtros por cajero y rango de fechas.
+    """
     restaurante = getattr(request, "restaurante", None) or get_current_restaurante(request)
-    cajeros = Cajero.objects.filter(restaurante=restaurante).order_by("nombre")
+
+    # ------------------------------------------------------------------
+    # 1. Cajeros con métricas de desempeño (agregaciones directas en BD).
+    #    Se usan Subqueries por relación para evitar cross-joins y N+1.
+    # ------------------------------------------------------------------
+    ventas_subquery = (
+        Orden.objects
+        .filter(cajero=OuterRef("pk"), restaurante=restaurante, estado=Orden.ESTADO_COMPLETADA)
+        .values("cajero")
+        .annotate(total=Sum("monto_total"))
+        .values("total")
+    )
+    pedidos_subquery = (
+        Orden.objects
+        .filter(cajero=OuterRef("pk"), restaurante=restaurante, estado=Orden.ESTADO_COMPLETADA)
+        .values("cajero")
+        .annotate(total=Count("id"))
+        .values("total")
+    )
+    turnos_subquery = (
+        TurnoCaja.all_objects
+        .filter(
+            cajero=OuterRef("pk"),
+            restaurante=restaurante,
+            estado__in=[TurnoCaja.ESTADO_CERRADO, TurnoCaja.ESTADO_FORZADO_SUPERVISOR],
+        )
+        .values("cajero")
+        .annotate(total=Count("id"))
+        .values("total")
+    )
+
+    cajeros = (
+        Cajero.objects
+        .filter(restaurante=restaurante)
+        .order_by("nombre")
+        .annotate(
+            total_ventas=Coalesce(
+                Subquery(ventas_subquery),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            pedidos_count=Coalesce(
+                Subquery(pedidos_subquery),
+                Value(0),
+                output_field=IntegerField(),
+            ),
+            turnos_count=Coalesce(
+                Subquery(turnos_subquery),
+                Value(0),
+                output_field=IntegerField(),
+            ),
+        )
+    )
+
+    # Ticket promedio calculado en Python (división segura, sin N+1 extra).
+    for cajero in cajeros:
+        cajero.ticket_promedio = (
+            cajero.total_ventas / cajero.pedidos_count
+            if cajero.pedidos_count
+            else Decimal("0.00")
+        )
+
+    # ------------------------------------------------------------------
+    # 2. Historial de cierres / arqueos (turnos CERRADO o FORZADO).
+    # ------------------------------------------------------------------
+    turnos_qs = (
+        TurnoCaja.all_objects
+        .filter(
+            restaurante=restaurante,
+            estado__in=[TurnoCaja.ESTADO_CERRADO, TurnoCaja.ESTADO_FORZADO_SUPERVISOR],
+        )
+        .select_related("cajero")
+    )
+
+    # Filtros básicos: cajero y rango de fechas de cierre.
+    filtro_cajero_id = request.GET.get("cajero_id", "").strip()
+    filtro_fecha_desde = request.GET.get("fecha_desde", "").strip()
+    filtro_fecha_hasta = request.GET.get("fecha_hasta", "").strip()
+
+    if filtro_cajero_id:
+        try:
+            turnos_qs = turnos_qs.filter(cajero_id=int(filtro_cajero_id))
+        except (ValueError, TypeError):
+            filtro_cajero_id = ""
+
+    if filtro_fecha_desde:
+        try:
+            turnos_qs = turnos_qs.filter(fecha_cierre__date__gte=date.fromisoformat(filtro_fecha_desde))
+        except ValueError:
+            filtro_fecha_desde = ""
+
+    if filtro_fecha_hasta:
+        try:
+            turnos_qs = turnos_qs.filter(fecha_cierre__date__lte=date.fromisoformat(filtro_fecha_hasta))
+        except ValueError:
+            filtro_fecha_hasta = ""
+
+    total_turnos_cerrados = turnos_qs.count()
+
+    turnos = list(
+        turnos_qs.annotate(
+            ventas_efectivo_sistema=Coalesce(
+                Sum(
+                    "ordenes__monto_total",
+                    filter=Q(ordenes__tipo_pago__iexact="Efectivo")
+                    & ~Q(ordenes__estado=Orden.ESTADO_ELIMINADA),
+                ),
+                Value(Decimal("0.00")),
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            )
+        ).order_by("-fecha_cierre", "-fecha_apertura")
+    )
+
+    # Monto esperado y diferencia calculados una sola vez en Python (sin hits extra).
+    for turno in turnos:
+        turno.monto_esperado_display = turno.monto_inicial + turno.ventas_efectivo_sistema
+        if turno.diferencia_arqueo is not None:
+            turno.diferencia_display = turno.diferencia_arqueo
+        elif turno.monto_final_declarado is not None:
+            turno.diferencia_display = turno.monto_final_declarado - turno.monto_esperado_display
+        else:
+            turno.diferencia_display = Decimal("0.00")
+
     return render(request, "Menu/cajeros.html", {
         "restaurante": restaurante,
         "cajeros": cajeros,
+        "turnos": turnos,
+        "filtro_cajero_id": filtro_cajero_id,
+        "filtro_fecha_desde": filtro_fecha_desde,
+        "filtro_fecha_hasta": filtro_fecha_hasta,
+        "total_turnos_cerrados": total_turnos_cerrados,
     })
 
 
