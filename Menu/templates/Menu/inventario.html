@@ -23,15 +23,6 @@
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
-            <!-- Botón para abrir el modal de ajuste manual -->
-            <button type="button" 
-                    id="btn-abrir-modal-ajuste-general"
-                    onclick="abrirModalAjuste()" 
-                    class="inline-flex items-center justify-center px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-150 ease-in-out focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
-                <i data-lucide="sliders-horizontal" class="w-4 h-4 mr-2"></i>
-                <span>+ Ajuste Manual de Stock</span>
-            </button>
-
             <!-- Acceso a POS y Cocina KDS -->
             <a href="{% url 'Menu:pedidos_crear' %}" 
                class="inline-flex items-center justify-center px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
