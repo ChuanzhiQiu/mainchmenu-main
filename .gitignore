@@ -31,3 +31,6 @@ desktop.ini
 *.sqlite3.bak
 *.diff
 
+
+# Ignorar archivos estáticos recolectados (generados por collectstatic)
+staticfiles/
