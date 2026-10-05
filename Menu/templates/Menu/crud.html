@@ -1,4 +1,5 @@
 {% extends "Menu/base.html" %}
+{% load formato %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -243,7 +244,7 @@
                     <tr class="hover:bg-slate-50/80 transition" id="fila-plato-{{ plato.id }}">
                         <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ plato.id }}</td>
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ plato.nombre }}</td>
-                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|floatformat:0 }}</td>
+                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|intdot }}</td>
                         <td class="py-3.5 px-6 space-y-1">
                             <button type="button" 
                                     class="btn-ver-receta inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition"
@@ -309,7 +310,7 @@
                     <tr class="hover:bg-slate-50/80 transition">
                         <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ menu.id }}</td>
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ menu.nombre }}</td>
-                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ menu.precio_menus|floatformat:0 }}</td>
+                        <td class="py-3.5 px-6 font-black text-emerald-600">${{ menu.precio_menus|intdot }}</td>
                         <td class="py-3.5 px-6">
                             <button class="btn-detalles-menu inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
                                     data-id="{{ menu.id }}" data-nombre="{{ menu.nombre }}">
@@ -570,7 +571,7 @@
                     <select id="menu-plato-seleccionar" class="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800">
                         <option value="">Selecciona un plato...</option>
                         {% for plato in platos %}
-                        <option value="{{ plato.id }}">{{ plato.nombre }} (${{ plato.valor|floatformat:0 }})</option>
+                        <option value="{{ plato.id }}">{{ plato.nombre }} (${{ plato.valor|intdot }})</option>
                         {% endfor %}
                     </select>
                     <button type="button" id="agregar-plato-menu" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition">

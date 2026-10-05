@@ -1,5 +1,6 @@
 {% extends 'Menu/base.html' %}
 {% load static %}
+{% load formato %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -131,7 +132,7 @@
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">{{ pedido.canal_venta }}</td>
-                                <td class="px-4 py-3 font-semibold text-slate-900">${{ pedido.monto_total|floatformat:0 }}</td>
+                                <td class="px-4 py-3 font-semibold text-slate-900">${{ pedido.monto_total|intdot }}</td>
                                 <td class="px-4 py-3 text-right">
                                     <a href="{% url 'Menu:ticket_orden' pedido.id %}" target="_blank" class="text-xs text-amber-600 hover:text-amber-800 font-bold">
                                         Ver Ticket

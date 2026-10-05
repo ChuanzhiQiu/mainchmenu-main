@@ -1,5 +1,6 @@
 {% extends 'Menu/base.html' %}
 {% load static %}
+{% load formato %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -213,7 +214,7 @@
 
                         <!-- Costo Unitario -->
                         <td class="px-3 py-3.5 text-right font-mono text-slate-600">
-                            ${{ insumo.costo_unitario }}
+                            ${{ insumo.costo_unitario|intdot:0 }}
                         </td>
 
                         <!-- Badge de Estado (Quiebre Crítico, Bajo Mínimo (Alerta), Normal) -->

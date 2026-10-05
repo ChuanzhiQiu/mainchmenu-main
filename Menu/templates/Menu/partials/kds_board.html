@@ -1,4 +1,5 @@
 {% load static %}
+{% load formato %}
 <div id="kds-board"
      hx-get="{% url 'Menu:inicio' %}"
      hx-trigger="every 5s, orderUpdated from:body"
@@ -113,7 +114,7 @@
                         <!-- Card Footer -->
                         <div class="p-4 border-t border-slate-700 bg-slate-800/80 flex items-center justify-between gap-2">
                             <div class="text-xs text-slate-300">
-                                <span class="font-black text-emerald-400 text-sm">${{ pedido.monto_total|floatformat:0 }}</span>
+                                <span class="font-black text-emerald-400 text-sm">${{ pedido.monto_total|intdot }}</span>
                             </div>
                             <div class="flex items-center gap-2">
                                 <a href="{% url 'Menu:ticket_orden' pedido.id %}?format=80mm" target="_blank" rel="noopener noreferrer"
@@ -125,7 +126,7 @@
                                         class="btn-confirmar-kds px-3 py-2 text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg text-xs font-black shadow-sm transition inline-flex items-center gap-1.5"
                                         data-id="{{ pedido.id }}"
                                         data-cliente="{{ pedido.cliente }}"
-                                        data-total="{{ pedido.monto_total|floatformat:0 }}"
+                                        data-total="{{ pedido.monto_total|intdot }}"
                                         data-canal="{{ pedido.canal_venta }}"
                                         title="Despachar Delivery">
                                     <i data-lucide="check" class="w-4 h-4"></i>
@@ -226,7 +227,7 @@
                         <!-- Card Footer -->
                         <div class="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
                             <div class="text-xs text-slate-500">
-                                <span class="font-bold text-slate-800 text-sm">${{ pedido.monto_total|floatformat:0 }}</span>
+                                <span class="font-bold text-slate-800 text-sm">${{ pedido.monto_total|intdot }}</span>
                             </div>
                             <div class="flex items-center gap-2">
                                 <a href="{% url 'Menu:ticket_orden' pedido.id %}?format=80mm" target="_blank" rel="noopener noreferrer"
@@ -244,7 +245,7 @@
                                         class="btn-confirmar-kds px-3 py-2 text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold shadow-sm transition inline-flex items-center gap-1.5"
                                         data-id="{{ pedido.id }}"
                                         data-cliente="{{ pedido.cliente }}"
-                                        data-total="{{ pedido.monto_total|floatformat:0 }}"
+                                        data-total="{{ pedido.monto_total|intdot }}"
                                         data-canal="{{ pedido.canal_venta }}"
                                         title="Completar / Despachar Orden">
                                     <i data-lucide="check" class="w-4 h-4"></i>

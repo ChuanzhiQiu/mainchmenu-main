@@ -1,4 +1,5 @@
 {% extends "Menu/base.html" %}
+{% load formato %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -71,10 +72,10 @@
                             </span>
                             {% endif %}
                         </td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.total_ventas|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.total_ventas|intdot:2 }}</td>
                         <td class="py-3.5 px-4 text-center font-mono text-xs text-slate-700">{{ cajero.pedidos_count }}</td>
                         <td class="py-3.5 px-4 text-center font-mono text-xs text-slate-700">{{ cajero.turnos_count }}</td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.ticket_promedio|floatformat:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ cajero.ticket_promedio|intdot:2 }}</td>
                         <td class="py-3.5 px-6 text-right">
                             <button class="btn-toggle-cajero inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition {% if cajero.activo %}bg-rose-50 hover:bg-rose-100 text-rose-600{% else %}bg-emerald-50 hover:bg-emerald-100 text-emerald-700{% endif %}"
                                     data-id="{{ cajero.id }}" data-nombre="{{ cajero.nombre }}" data-activo="{{ cajero.activo|yesno:'1,0' }}">
@@ -177,20 +178,20 @@
                             </span>
                             {% endif %}
                         </td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_inicial|floatformat:2 }}</td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.ventas_efectivo_sistema|floatformat:2 }}</td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ turno.monto_esperado_display|floatformat:2 }}</td>
-                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_final_declarado|floatformat:2|default:"—" }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_inicial|intdot:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.ventas_efectivo_sistema|intdot:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">${{ turno.monto_esperado_display|intdot:2 }}</td>
+                        <td class="py-3.5 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">${{ turno.monto_final_declarado|intdot:2|default:"—" }}</td>
                         <td class="py-3.5 px-4 text-right whitespace-nowrap">
                             {% if turno.diferencia_display < 0 %}
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                 <i data-lucide="trending-down" class="w-3.5 h-3.5"></i>
-                                Faltante ${{ turno.diferencia_display|floatformat:2 }}
+                                Faltante ${{ turno.diferencia_display|intdot:2 }}
                             </span>
                             {% elif turno.diferencia_display > 0 %}
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
-                                Sobrante +${{ turno.diferencia_display|floatformat:2 }}
+                                Sobrante +${{ turno.diferencia_display|intdot:2 }}
                             </span>
                             {% else %}
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
