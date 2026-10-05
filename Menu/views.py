@@ -1924,6 +1924,56 @@ def ajustar_stock_view(request):
         return JsonResponse({"success": False, "message": str(e)}, status=500)
 
 
+@admin_required
+def guardar_insumo(request):
+    """Crea o edita una materia prima (Insumo) del inventario."""
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Método no permitido. Use POST."}, status=405)
+
+    insumo_id = request.POST.get('id')
+    codigo = (request.POST.get('codigo') or '').strip()
+    nombre = (request.POST.get('nombre') or '').strip()
+    unidad_medida = request.POST.get('unidad_medida') or Insumo.UNIDAD_UN
+    if unidad_medida not in dict(Insumo.UNIDAD_CHOICES):
+        unidad_medida = Insumo.UNIDAD_UN
+
+    if not nombre:
+        return JsonResponse({"success": False, "message": "El nombre del insumo es obligatorio."}, status=400)
+
+    def _dec_valor(raw):
+        try:
+            return Decimal(str(raw).strip() or "0")
+        except (InvalidOperation, ValueError):
+            return Decimal("0.000")
+
+    stock_actual = _dec_valor(request.POST.get('stock_actual'))
+    stock_minimo = _dec_valor(request.POST.get('stock_minimo'))
+    costo_unitario = _dec_valor(request.POST.get('costo_unitario'))
+
+    if insumo_id:
+        insumo = get_object_or_404(Insumo, id=insumo_id, restaurante=restaurante)
+        insumo.codigo = codigo
+        insumo.nombre = nombre
+        insumo.unidad_medida = unidad_medida
+        insumo.stock_actual = stock_actual
+        insumo.stock_minimo = stock_minimo
+        insumo.costo_unitario = costo_unitario
+        insumo.save()
+        return JsonResponse({"success": True, "message": "Insumo editado exitosamente."})
+
+    Insumo.objects.create(
+        restaurante=restaurante,
+        codigo=codigo,
+        nombre=nombre,
+        unidad_medida=unidad_medida,
+        stock_actual=stock_actual,
+        stock_minimo=stock_minimo,
+        costo_unitario=costo_unitario,
+    )
+    return JsonResponse({"success": True, "message": "Insumo creado exitosamente."})
+
+
 # =============================================================================
 # PREVISIÓN IA Y ÓRDENES DE COMPRA (F23 & C05)
 # =============================================================================
