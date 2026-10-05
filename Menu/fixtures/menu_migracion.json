@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "fuente": "Fotos del menú físico (OCR macOS Vision) — carpetas 'platillos' y 'colaciones y extras'",
+  "fecha_digitalizacion": "2026-10-04",
+  "moneda": "CLP",
+  "grandes_categorias": ["Platillos", "Colaciones y Extras"],
+  "notas": [
+    "La sección 'Sopita/Copita de Camarón' de la foto IMG_0537 ya no existe, se excluye.",
+    "Carne Tausi $6.800 confirmado.",
+    "En colaciones con doble precio, el más barato corresponde a la versión 'solo cerdo'.",
+    "El nombre 'Pollo con Diente de Dragón' es correcto.",
+    "Los menús grupales (2/3/4/6 personas) y las promociones se modelan como combos (Menu).",
+    "Los 'Nuevo Menú' (Carne/Cerdo Mongoliano + papas fritas) se incluyen como colaciones; 'Papa Sola' se ubica en Extras."
+  ],
+  "categorias": [
+    {"nombre": "Arroces", "grupo": "Platillos"},
+    {"nombre": "Vegetariano", "grupo": "Platillos"},
+    {"nombre": "Pollo", "grupo": "Platillos"},
+    {"nombre": "Cerdo", "grupo": "Platillos"},
+    {"nombre": "Vacuno", "grupo": "Platillos"},
+    {"nombre": "Carnes Surtidas", "grupo": "Platillos"},
+    {"nombre": "Extras", "grupo": "Colaciones y Extras"},
+    {"nombre": "Colaciones", "grupo": "Colaciones y Extras"},
+    {"nombre": "Desayunos", "grupo": "Colaciones y Extras"}
+  ],
+  "platos": [
+    {"nombre": "Arroz Blanco", "precio": 1000, "categoria": "Arroces", "descripcion": ""},
+    {"nombre": "Arroz Chaufán", "precio": 1800, "categoria": "Arroces", "descripcion": ""},
+    {"nombre": "Arroz Especial", "precio": 2500, "categoria": "Arroces", "descripcion": ""},
+
+    {"nombre": "Chaumín Especial", "precio": 6000, "categoria": "Carnes Surtidas", "descripcion": "Fideos salteados con carnes surtidas"},
+
+    {"nombre": "Chapsui de Verduras", "precio": 4500, "categoria": "Vegetariano", "descripcion": "Verduras surtidas salteadas"},
+    {"nombre": "Chaumín de Verduras", "precio": 4800, "categoria": "Vegetariano", "descripcion": "Fideos salteados con verduras"},
+
+    {"nombre": "Chapsui de Pollo", "precio": 6000, "categoria": "Pollo", "descripcion": "Pollo salteado con verduras"},
+    {"nombre": "Pollo Tausi", "precio": 6500, "categoria": "Pollo", "descripcion": "Pollo salteado con salsa de porotos negros"},
+    {"nombre": "Pollo Piña", "precio": 6800, "categoria": "Pollo", "descripcion": "Pollo arrebosado con piña y salsa tamarindo"},
+    {"nombre": "Pollo Keitén", "precio": 6500, "categoria": "Pollo", "descripcion": "Pollo con verduras y maní"},
+
+    {"nombre": "Cerdo al Ajo", "precio": 6000, "categoria": "Cerdo", "descripcion": "Cerdo salteado con salsa de ajo"},
+    {"nombre": "Cerdo Tausi", "precio": 6000, "categoria": "Cerdo", "descripcion": "Cerdo salteado con salsa de porotos negros"},
+
+    {"nombre": "Carne Mongoliana", "precio": 6800, "categoria": "Vacuno", "descripcion": "Carne salteada con ají"},
+    {"nombre": "Carne Tausi", "precio": 6800, "categoria": "Vacuno", "descripcion": "Carne salteada con salsa de porotos negros"},
+    {"nombre": "Chapsui de Carne", "precio": 6000, "categoria": "Vacuno", "descripcion": "Carne salteada con verduras"},
+
+    {"nombre": "Chapsui Especial", "precio": 6000, "categoria": "Carnes Surtidas", "descripcion": "Carnes surtidas salteadas"},
+    {"nombre": "Fuyón Especial", "precio": 6500, "categoria": "Carnes Surtidas", "descripcion": "Tortilla de huevo con carnes surtidas"},
+    {"nombre": "Especial Mainch", "precio": 9900, "categoria": "Carnes Surtidas", "descripcion": "Carnes surtidas, camarón y fideos de arroz"},
+
+    {"nombre": "Wantán Frito (4 unidades)", "precio": 1500, "categoria": "Extras", "descripcion": ""},
+    {"nombre": "Wantán Frito (8 unidades)", "precio": 2500, "categoria": "Extras", "descripcion": ""},
+    {"nombre": "Arrollado Primavera (3 unidades)", "precio": 2000, "categoria": "Extras", "descripcion": ""},
+    {"nombre": "Arrollado Primavera (6 unidades)", "precio": 3000, "categoria": "Extras", "descripcion": "Rellenos con carne y verduras"},
+    {"nombre": "Arrollado Jamón Queso (3 unidades)", "precio": 2000, "categoria": "Extras", "descripcion": ""},
+    {"nombre": "Arrollado Jamón Queso (6 unidades)", "precio": 3000, "categoria": "Extras", "descripcion": ""},
+    {"nombre": "Papa Sola", "precio": 3600, "categoria": "Extras", "descripcion": "Papas fritas solas"},
+
+    {"nombre": "Colación Pollo con Diente de Dragón", "precio": 4500, "categoria": "Colaciones", "descripcion": "Pollo con diente de dragón c/ arroz chaufán"},
+    {"nombre": "Colación Pollo Piña", "precio": 4800, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Carne Mongoliana", "precio": 4900, "categoria": "Colaciones", "descripcion": "Vacuno, pollo o mixto c/ arroz chaufán"},
+    {"nombre": "Colación Carne Mongoliana (solo cerdo)", "precio": 4500, "categoria": "Colaciones", "descripcion": "Cerdo c/ arroz chaufán"},
+    {"nombre": "Colación Chapsui Especial", "precio": 4500, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Chaumín Especial", "precio": 4500, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Vegetariana", "precio": 4000, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Chaumín Mongoliano", "precio": 5300, "categoria": "Colaciones", "descripcion": "Vacuno, pollo o mixto c/ arroz chaufán"},
+    {"nombre": "Colación Chaumín Mongoliano (solo cerdo)", "precio": 4900, "categoria": "Colaciones", "descripcion": "Cerdo c/ arroz chaufán"},
+    {"nombre": "Colación Pollo Keitén", "precio": 4800, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Cerdo Tausi", "precio": 4500, "categoria": "Colaciones", "descripcion": "c/ arroz chaufán"},
+    {"nombre": "Colación Carne Mongoliana + Papas Fritas", "precio": 6400, "categoria": "Colaciones", "descripcion": "Vacuno, pollo o mixta + papas fritas"},
+    {"nombre": "Colación Cerdo Mongoliano + Papas Fritas", "precio": 6000, "categoria": "Colaciones", "descripcion": "Cerdo + papas fritas"},
+
+    {"nombre": "Bao zi (pollo, cerdo o vegetariano)", "precio": 1500, "categoria": "Desayunos", "descripcion": ""},
+    {"nombre": "Consomé de Pollo", "precio": 1200, "categoria": "Desayunos", "descripcion": ""}
+  ],
+  "combos": [
+    {
+      "nombre": "Menú para 2 personas",
+      "precio": 14900,
+      "grupo": "Platillos",
+      "platos": ["Wantán Frito (8 unidades)", "Chapsui Especial", "Carne Mongoliana", "Arroz Chaufán"],
+      "detalle": "1 wantán frito, 1 chapsui especial, 1 carne mongoliana, 2 arroz chaufán"
+    },
+    {
+      "nombre": "Menú para 3 personas",
+      "precio": 25900,
+      "grupo": "Platillos",
+      "platos": ["Wantán Frito (8 unidades)", "Arrollado Primavera (6 unidades)", "Chapsui Especial", "Carne Mongoliana", "Pollo Piña", "Arroz Chaufán"],
+      "detalle": "1 wantán frito, 1 arrollado primavera, 1 chapsui especial, 1 carne mongoliana, 1 pollo piña, 3 arroz chaufán"
+    },
+    {
+      "nombre": "Menú para 4 personas",
+      "precio": 32900,
+      "grupo": "Platillos",
+      "platos": ["Wantán Frito (8 unidades)", "Arrollado Primavera (6 unidades)", "Pollo Keitén", "Carne Mongoliana", "Cerdo Tausi", "Fuyón Especial", "Arroz Chaufán"],
+      "detalle": "1 wantán frito, 1 arrollado primavera, 1 pollo keitén, 1 carne mongoliana, 1 cerdo tausi, 1 fuyón especial, 4 arroz chaufán"
+    },
+    {
+      "nombre": "Menú para 6 personas",
+      "precio": 47900,
+      "grupo": "Platillos",
+      "platos": ["Wantán Frito (8 unidades)", "Arrollado Primavera (6 unidades)", "Chapsui de Verduras", "Carne Mongoliana", "Pollo Piña", "Cerdo al Ajo", "Chaumín Especial", "Fuyón Especial", "Arroz Chaufán"],
+      "detalle": "2 wantán frito, 2 arrollado primavera, 1 chapsui de verduras, 1 carne mongoliana, 1 pollo piña, 1 cerdo al ajo, 1 chaumín especial, 1 fuyón especial, 6 arroz chaufán"
+    },
+    {
+      "nombre": "Promo Consomé + Bao zi",
+      "precio": 2500,
+      "grupo": "Colaciones y Extras",
+      "platos": ["Consomé de Pollo", "Bao zi (pollo, cerdo o vegetariano)"],
+      "detalle": "1 consomé de pollo + 1 bao zi"
+    },
+    {
+      "nombre": "Promo Consomé + 2 Bao zi",
+      "precio": 3500,
+      "grupo": "Colaciones y Extras",
+      "platos": ["Consomé de Pollo", "Bao zi (pollo, cerdo o vegetariano)"],
+      "detalle": "1 consomé de pollo + 2 bao zi"
+    },
+    {
+      "nombre": "Promo 2 Bao zi",
+      "precio": 2500,
+      "grupo": "Colaciones y Extras",
+      "platos": ["Bao zi (pollo, cerdo o vegetariano)"],
+      "detalle": "2 bao zi"
+    }
+  ]
+}

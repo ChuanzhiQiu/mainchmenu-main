@@ -122,6 +122,12 @@ class Plato(models.Model):
         related_name='platos',
         verbose_name="Categoría"
     )
+    descripcion = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Descripción",
+        help_text="Descripción del plato (ingredientes y preparación) para carta y funciones IA."
+    )
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -238,6 +244,12 @@ class Menu(models.Model):
     nombre = models.CharField(max_length=100)
     platos = models.ManyToManyField(Plato)
     precio_menus = models.DecimalField(max_digits=12, decimal_places=2)
+    descripcion = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Descripción",
+        help_text="Detalle del combo (porciones y contenido)."
+    )
 
     objects = TenantManager()
     all_objects = models.Manager()
