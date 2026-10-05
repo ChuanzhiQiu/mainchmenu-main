@@ -175,6 +175,46 @@
         </div>
     </div>
 
+    <!-- SECCIÓN 0: CATEGORÍAS DEL CATÁLOGO -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
+            <div class="flex items-center gap-2">
+                <i data-lucide="tags" class="w-5 h-5 text-indigo-500"></i>
+                <h2 class="text-lg font-black text-slate-900">Categorías del Catálogo</h2>
+            </div>
+            <span class="text-xs text-slate-500">Se reflejan automáticamente en el filtro del POS</span>
+        </div>
+        <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <form id="form-categoria" class="flex flex-col gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="id" id="categoria-id">
+                <label for="categoria-nombre" class="text-xs font-bold text-slate-700 uppercase">Nueva Categoría</label>
+                <input type="text" id="categoria-nombre" name="nombre" required placeholder="Ej: Entradas"
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-semibold">
+                <input type="number" id="categoria-orden" name="orden" placeholder="Orden (opcional)"
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-semibold">
+                <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition">
+                    Guardar Categoría
+                </button>
+            </form>
+            <div class="md:col-span-2 flex flex-wrap gap-2 content-start">
+                {% for cat in categorias %}
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                    {{ cat.nombre }}
+                    <button type="button" class="btn-editar-categoria text-slate-400 hover:text-indigo-600 transition" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" title="Editar">
+                        <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button type="button" class="btn-eliminar-categoria text-slate-400 hover:text-rose-600 transition" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" title="Eliminar">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                </span>
+                {% empty %}
+                <p class="text-xs text-slate-400">Sin categorías aún. Crea la primera para organizar el POS.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <!-- SECCIÓN 1: PLATOS Y ESCANDALLOS -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/50">
@@ -220,7 +260,7 @@
                         </td>
                         <td class="py-3.5 px-6 text-right space-x-1">
                             <button class="btn-editar inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">
+                                    data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}" data-categoria="{{ plato.categoria_id|default:'' }}">
                                 <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
                                 <span>Editar</span>
                             </button>
@@ -478,6 +518,17 @@
                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
             </div>
 
+            <div>
+                <label for="plato-categoria" class="block text-xs font-bold text-slate-700 uppercase mb-1">Categoría</label>
+                <select id="plato-categoria" name="categoria_id"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-amber-500">
+                    <option value="">Sin categoría</option>
+                    {% for cat in categorias %}
+                    <option value="{{ cat.id }}">{{ cat.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <div class="pt-2 flex justify-end gap-2">
                 <button type="button" id="cancelar-modal-plato" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition">
                     Cancelar
@@ -665,6 +716,51 @@ document.addEventListener("DOMContentLoaded", () => {
         return cookieValue;
     };
     const csrftoken = getCookie('csrftoken');
+
+    /** 0. SECCIÓN CATEGORÍAS **/
+    const formCategoria = document.getElementById("form-categoria");
+    const categoriaIdInput = document.getElementById("categoria-id");
+    const categoriaNombreInput = document.getElementById("categoria-nombre");
+    const categoriaOrdenInput = document.getElementById("categoria-orden");
+
+    formCategoria.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const formData = new FormData(formCategoria);
+        fetch("{% url 'Menu:guardar_categoria' %}", {
+            method: "POST",
+            body: formData,
+            headers: { "X-CSRFToken": csrftoken }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) { window.location.reload(); }
+            else { alert("Error: " + data.message); }
+        });
+    });
+
+    document.querySelectorAll(".btn-editar-categoria").forEach(btn => {
+        btn.addEventListener("click", () => {
+            categoriaIdInput.value = btn.dataset.id;
+            categoriaNombreInput.value = btn.dataset.nombre;
+            categoriaOrdenInput.value = btn.dataset.orden || "";
+        });
+    });
+
+    document.querySelectorAll(".btn-eliminar-categoria").forEach(btn => {
+        btn.addEventListener("click", () => {
+            if (!confirm(`¿Eliminar la categoría "${btn.dataset.nombre}"? Los platos quedarán sin categoría.`)) return;
+            fetch("{% url 'Menu:eliminar_categoria' %}", {
+                method: "POST",
+                body: JSON.stringify({ id: btn.dataset.id }),
+                headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) { window.location.reload(); }
+                else { alert("Error: " + data.message); }
+            });
+        });
+    });
 
     /** 1. GESTIÓN DE ESCANDALLOS / RECETAS **/
     const modalReceta = document.getElementById("modal-receta");
@@ -921,11 +1017,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const platoIdInput = document.getElementById("plato-id");
     const platoNombreInput = document.getElementById("plato-nombre");
     const platoValorInput = document.getElementById("plato-valor");
+    const platoCategoriaSelect = document.getElementById("plato-categoria");
 
     document.getElementById("btn-crear-plato").addEventListener("click", () => {
         modalTituloPlato.textContent = "Crear Nuevo Plato";
         formPlato.reset();
         platoIdInput.value = "";
+        platoCategoriaSelect.value = "";
         modalPlato.classList.remove("hidden");
     });
 
@@ -935,6 +1033,7 @@ document.addEventListener("DOMContentLoaded", () => {
             platoIdInput.value = btn.dataset.id;
             platoNombreInput.value = btn.dataset.nombre;
             platoValorInput.value = btn.dataset.valor;
+            platoCategoriaSelect.value = btn.dataset.categoria || "";
             modalPlato.classList.remove("hidden");
         });
     });

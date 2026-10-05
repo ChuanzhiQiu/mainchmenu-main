@@ -4,7 +4,7 @@ from django.conf import settings
 from .models import (
     Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock,
     Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa, Area,
-    CredencialRestaurante, get_restaurante_de_usuario
+    CredencialRestaurante, Categoria, get_restaurante_de_usuario
 )
 from django.http import JsonResponse, Http404, HttpResponseForbidden
 from django.contrib import messages
@@ -930,6 +930,7 @@ def crear_orden(request):
     
     platos_por_letra = {letra: list(grupo) for letra, grupo in groupby(platos, key=lambda x: x.nombre[0].upper())}
     menus_por_letra = {letra: list(grupo) for letra, grupo in groupby(menus, key=lambda x: x.nombre[0].upper())}
+    categorias = Categoria.objects.filter(restaurante=restaurante, activo=True).order_by('orden', 'nombre')
     
     es_admin = request.user.is_authenticated and request.user.is_staff
     turno_abierto = TurnoCaja.all_objects.filter(
@@ -945,6 +946,7 @@ def crear_orden(request):
     return render(request, "Menu/pedidos_crear.html", {
         "platos_por_letra": platos_por_letra,
         "menus_por_letra": menus_por_letra,
+        "categorias": categorias,
         "canales_ventas": canales_ventas,
         "tipos_pago": tipos_pago,
         "es_admin": es_admin,
@@ -1183,6 +1185,7 @@ def crud(request):
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     platos = Plato.objects.filter(restaurante=restaurante).order_by('id')
     menus = Menu.objects.filter(restaurante=restaurante).order_by('id')
+    categorias = Categoria.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
     insumos = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
     areas = Area.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
     mesas = Mesa.objects.filter(restaurante=restaurante).select_related('area').order_by(
@@ -1192,6 +1195,7 @@ def crud(request):
     return render(request, "Menu/crud.html", {
         "platos": platos, 
         "menus": menus,
+        "categorias": categorias,
         "insumos": insumos,
         "areas": areas,
         "mesas": mesas,
@@ -1206,20 +1210,30 @@ def guardar_plato(request):
         plato_id = request.POST.get('id')
         nombre = request.POST.get('nombre')
         valor = request.POST.get('valor')
+        categoria_id = request.POST.get('categoria_id')
 
         if not nombre or not valor:
             return JsonResponse({'success': False, 'message': 'Nombre y valor son obligatorios.'})
+
+        categoria = None
+        if categoria_id:
+            categoria = Categoria.objects.filter(
+                id=categoria_id, restaurante=restaurante
+            ).first()
+            if categoria is None:
+                return JsonResponse({'success': False, 'message': 'Categoría inválida para este restaurante.'})
 
         if plato_id:
             # Editar plato existente
             plato = get_object_or_404(Plato, id=plato_id, restaurante=restaurante)
             plato.nombre = nombre
             plato.valor = valor
+            plato.categoria = categoria
             plato.save()
             return JsonResponse({'success': True, 'message': 'Plato editado exitosamente.'})
         else:
             # Crear nuevo plato
-            Plato.objects.create(restaurante=restaurante, nombre=nombre, valor=valor)
+            Plato.objects.create(restaurante=restaurante, nombre=nombre, valor=valor, categoria=categoria)
             return JsonResponse({'success': True, 'message': 'Plato creado exitosamente.'})
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
@@ -1239,6 +1253,54 @@ def eliminar_plato(request):
         return JsonResponse({'success': False, 'message': 'ID de plato no proporcionado.'})
 
     return JsonResponse({'success': False, 'message': 'Método no permitido.'})
+
+
+@admin_required
+def guardar_categoria(request):
+    """Crea o edita una categoría del catálogo (se refleja automáticamente en el POS)."""
+    if request.method == 'POST':
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+        categoria_id = request.POST.get('id')
+        nombre = (request.POST.get('nombre') or '').strip()
+        orden_raw = request.POST.get('orden') or 0
+
+        if not nombre:
+            return JsonResponse({'success': False, 'message': 'El nombre de la categoría es obligatorio.'})
+
+        try:
+            orden = int(orden_raw)
+        except (TypeError, ValueError):
+            orden = 0
+
+        if categoria_id:
+            categoria = get_object_or_404(Categoria, id=categoria_id, restaurante=restaurante)
+            categoria.nombre = nombre
+            categoria.orden = orden
+            categoria.save()
+            return JsonResponse({'success': True, 'message': 'Categoría editada exitosamente.'})
+
+        Categoria.objects.create(restaurante=restaurante, nombre=nombre, orden=orden)
+        return JsonResponse({'success': True, 'message': 'Categoría creada exitosamente.'})
+
+    return JsonResponse({'success': False, 'message': 'Método no permitido.'})
+
+
+@admin_required
+def eliminar_categoria(request):
+    """Elimina una categoría; sus platos quedan sin categoría (no se eliminan)."""
+    if request.method == 'POST':
+        restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+        data = json.loads(request.body or '{}')
+        categoria_id = data.get('id')
+        if categoria_id:
+            categoria = get_object_or_404(Categoria, id=categoria_id, restaurante=restaurante)
+            Plato.objects.filter(restaurante=restaurante, categoria=categoria).update(categoria=None)
+            categoria.delete()
+            return JsonResponse({'success': True, 'message': 'Categoría eliminada exitosamente.'})
+        return JsonResponse({'success': False, 'message': 'ID de categoría no proporcionado.'})
+
+    return JsonResponse({'success': False, 'message': 'Método no permitido.'})
+
 
 @admin_required
 def guardar_menu(request):

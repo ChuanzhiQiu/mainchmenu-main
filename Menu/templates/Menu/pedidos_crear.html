@@ -22,10 +22,6 @@
                 <i data-lucide="banknote" class="w-4 h-4"></i>
                 <span>Cobrar Orden</span>
             </button>
-            <a href="{% url 'Menu:inicio' %}" class="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition">
-                <i data-lucide="utensils" class="w-4 h-4"></i>
-                <span>Ver Cocina KDS</span>
-            </a>
         </div>
     </div>
 
@@ -58,18 +54,11 @@
                     <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="combos">
                         Combos / Promos
                     </button>
-                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="entradas">
-                        Entradas
+                    {% for cat in categorias %}
+                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="{{ cat.nombre }}">
+                        {{ cat.nombre }}
                     </button>
-                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="fondos">
-                        Fondos
-                    </button>
-                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="bebidas">
-                        Bebidas
-                    </button>
-                    <button type="button" class="tab-btn px-3 py-1.5 rounded-lg transition-colors bg-slate-100 text-slate-700 hover:bg-slate-200" data-category="postres">
-                        Postres
-                    </button>
+                    {% endfor %}
                 </div>
             </div>
 
@@ -137,7 +126,8 @@
                                          data-type="plato"
                                          data-id="{{ plato.id }}"
                                          data-nombre="{{ plato.nombre }}"
-                                         data-precio="{{ plato.valor }}">
+                                         data-precio="{{ plato.valor }}"
+                                         data-category="{{ plato.categoria.nombre|default:'' }}">
                                         <div>
                                             <div class="flex items-start justify-between gap-1 mb-1">
                                                 <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">Plato</span>
@@ -525,32 +515,7 @@
         verificarTurno();
         setInterval(verificarTurno, 5000);
 
-        // 1. Clasificación heurística de categorías para pestañas del cliente
-        function getCategoryForName(name, isCombo) {
-            if (isCombo) return "combos";
-            const lower = name.toLowerCase();
-            if (lower.includes("bebida") || lower.includes("jugo") || lower.includes("agua") || lower.includes("coca") || lower.includes("sprite") || lower.includes("fanta") || lower.includes("cerveza")) {
-                return "bebidas";
-            }
-            if (lower.includes("postre") || lower.includes("flan") || lower.includes("torta") || lower.includes("helado") || lower.includes("queque") || lower.includes("dulce")) {
-                return "postres";
-            }
-            if (lower.includes("entrada") || lower.includes("empanada") || lower.includes("sopa") || lower.includes("consome") || lower.includes("ensalada")) {
-                return "entradas";
-            }
-            return "fondos";
-        }
-
-        // Asignar categorías heurísticas a tarjetas de platos si no la tienen
-        document.querySelectorAll(".item-card").forEach(card => {
-            const type = card.dataset.type;
-            const name = card.dataset.nombre || "";
-            if (!card.dataset.category) {
-                card.dataset.category = getCategoryForName(name, type === "menu");
-            }
-        });
-
-        // 2. Filtro por Pestañas de Categoría
+        // 1. Filtro por Pestañas de Categoría
         tabButtons.forEach(btn => {
             btn.addEventListener("click", () => {
                 tabButtons.forEach(b => {
@@ -575,7 +540,7 @@
         function aplicarFiltrosCatalogo(categoria, query) {
             document.querySelectorAll(".item-card").forEach(card => {
                 const name = (card.dataset.nombre || "").toLowerCase();
-                const cardCat = card.dataset.category || "fondos";
+                const cardCat = card.dataset.category || "";
 
                 const matchCat = (categoria === "todos") || (cardCat === categoria) || (categoria === "combos" && card.dataset.type === "menu");
                 const matchQuery = !query || name.includes(query);
