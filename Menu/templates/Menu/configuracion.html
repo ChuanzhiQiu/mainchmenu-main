@@ -117,19 +117,23 @@
                             </p>
                         </div>
                         <div class="flex items-center gap-2">
+                            {% if es_admin %}
                             {% if terminal_activa %}
-                            <a href="{% url 'Menu:tenant_desactivar_terminal' %}" 
+                            <a href="{% if restaurante.slug %}{% url 'Menu:tenant_desactivar_terminal' slug=restaurante.slug %}{% else %}{% url 'Menu:desactivar_terminal' %}{% endif %}" 
                                onclick="return confirm('¿Desvincular esta terminal del restaurante? Tendrá que volver a vincularla.');"
                                class="text-xs px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 font-semibold transition inline-flex items-center gap-1.5">
                                 <i data-lucide="unlink" class="w-3.5 h-3.5"></i>
                                 <span>Desvincular</span>
                             </a>
                             {% else %}
-                            <a href="{% url 'Menu:tenant_activar_terminal' %}" 
+                            <a href="{% if restaurante.slug %}{% url 'Menu:tenant_activar_terminal' slug=restaurante.slug %}{% else %}{% url 'Menu:activar_terminal' %}{% endif %}" 
                                class="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition inline-flex items-center gap-1.5 shadow-sm">
                                 <i data-lucide="link" class="w-3.5 h-3.5"></i>
                                 <span>Vincular Este Dispositivo</span>
                             </a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-xs text-slate-400 font-semibold italic flex items-center gap-1"><i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> Gestión de terminal exclusiva de Administrador</span>
                             {% endif %}
                         </div>
                     </div>
@@ -340,6 +344,12 @@
             <!-- MÓDULO 2: DATOS DEL LOCAL (EXTENSIBLE)                     -->
             <!-- ========================================================= -->
             <div id="tab-content-local" class="config-tab-content hidden space-y-6">
+                {% if not es_admin %}
+                <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-start gap-2.5 text-sm">
+                    <i data-lucide="lock" class="w-4 h-4 mt-0.5 shrink-0"></i>
+                    <span><strong>Modo Solo Lectura:</strong> Solo un administrador puede modificar estos parámetros.</span>
+                </div>
+                {% endif %}
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
                     <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
                         <i data-lucide="store" class="w-5 h-5 text-amber-500"></i>
@@ -366,6 +376,12 @@
             <!-- MÓDULO 3: PARÁMETROS DEL POS (EXTENSIBLE)                 -->
             <!-- ========================================================= -->
             <div id="tab-content-operaciones" class="config-tab-content hidden space-y-6">
+                {% if not es_admin %}
+                <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-start gap-2.5 text-sm">
+                    <i data-lucide="lock" class="w-4 h-4 mt-0.5 shrink-0"></i>
+                    <span><strong>Modo Solo Lectura:</strong> Solo un administrador puede modificar estos parámetros.</span>
+                </div>
+                {% endif %}
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
                     <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
                         <i data-lucide="sliders" class="w-5 h-5 text-indigo-500"></i>
@@ -645,7 +661,8 @@
         try {
             if (btn) btn.disabled = true;
 
-            const res = await fetch("{% url 'Menu:tenant_api_configuracion_dispositivo' %}", {
+            const apiUrl = "{% if restaurante.slug %}{% url 'Menu:tenant_api_configuracion_dispositivo' slug=restaurante.slug %}{% else %}{% url 'Menu:api_guardar_configuracion_dispositivo' %}{% endif %}";
+            const res = await fetch(apiUrl, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
