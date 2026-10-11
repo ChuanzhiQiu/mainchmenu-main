@@ -316,6 +316,12 @@
                     const card = document.getElementById(`order-card-${activeOrderId}`);
                     if (card) card.remove();
 
+                    // Impresión inmediata por WebUSB si está habilitada
+                    const autoImprimir = localStorage.getItem("mainch_auto_imprimir") !== "0";
+                    if (autoImprimir && window.MainchDirectPrint && activeOrderId) {
+                        window.MainchDirectPrint.printOrderDirectly(activeOrderId);
+                    }
+
                     document.body.dispatchEvent(new Event('orderUpdated'));
                 } else {
                     if (window.showToast) {

@@ -198,6 +198,14 @@
                     </a>
                     {% endif %}
 
+                    <!-- Configuración General (accesible para el local/caja y admin) -->
+                    <a href="{{ url_configuracion }}"
+                       class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
+                       title="Configuraciones Generales y Dispositivo">
+                        <i data-lucide="settings" class="w-4 h-4 text-violet-400"></i>
+                        <span class="hidden lg:inline">Configuración</span>
+                    </a>
+
                     <!-- Rol & Auth Controls -->
                     <div class="h-6 w-px bg-slate-800 mx-1 hidden sm:block"></div>
 
@@ -326,6 +334,127 @@
                 lucide.createIcons();
             }
         });
+
+        // =====================================================================
+        // GLOBAL WEBUSB ESC/POS PRINTER SERVICE (MainchDirectPrint)
+        // =====================================================================
+        window.MainchDirectPrint = {
+            async getDevice() {
+                if (!navigator.usb) return null;
+                try {
+                    const devices = await navigator.usb.getDevices();
+                    if (devices.length === 0) return null;
+                    const vId = parseInt(localStorage.getItem("mainch_printer_vendor_id")) || null;
+                    const pId = parseInt(localStorage.getItem("mainch_printer_product_id")) || null;
+                    if (vId && pId) {
+                        const matched = devices.find(d => d.vendorId === vId && d.productId === pId);
+                        if (matched) return matched;
+                    }
+                    return devices[0];
+                } catch (e) {
+                    console.warn("MainchDirectPrint error getting devices:", e);
+                    return null;
+                }
+            },
+
+            async connect(device) {
+                if (!device.opened) await device.open();
+                if (device.configuration === null) await device.selectConfiguration(1);
+                const iface = device.configuration.interfaces[0];
+                if (iface && !iface.claimed) {
+                    await device.claimInterface(iface.interfaceNumber);
+                }
+                return device;
+            },
+
+            buildEscPosFromData(datos) {
+                const encoder = new TextEncoder();
+                const ESC = 0x1B;
+                const GS = 0x1D;
+                let bytes = [];
+
+                // Reset e inicialización
+                bytes.push(ESC, 0x40);
+
+                // Centrado: ESC a 1
+                bytes.push(ESC, 0x61, 0x01);
+                bytes.push(ESC, 0x45, 0x01); // Negrita
+                bytes.push(...encoder.encode(`${datos.restaurante_nombre || "MAINCH"}\n`));
+                bytes.push(ESC, 0x45, 0x00);
+
+                bytes.push(...encoder.encode(`COMANDA #${datos.id}\n`));
+                bytes.push(...encoder.encode(`${datos.fecha}\n`));
+                bytes.push(...encoder.encode("--------------------------------\n"));
+
+                // Izquierda: ESC a 0
+                bytes.push(ESC, 0x61, 0x00);
+                if (datos.cliente) bytes.push(...encoder.encode(`Cliente: ${datos.cliente}\n`));
+                if (datos.mesa) bytes.push(...encoder.encode(`Mesa: ${datos.mesa}\n`));
+                bytes.push(...encoder.encode(`Servicio: ${datos.tipo_servicio || "Mostrador"}\n`));
+                bytes.push(...encoder.encode(`Pago: ${datos.tipo_pago || "Por definir"}\n`));
+                bytes.push(...encoder.encode("--------------------------------\n"));
+
+                // Items
+                if (datos.items && datos.items.length) {
+                    for (const item of datos.items) {
+                        const cantNombre = `${item.cantidad}x ${item.nombre}`.padEnd(23).substring(0, 23);
+                        const sub = `$${Math.round(item.subtotal || 0).toLocaleString('es-CL')}`.padStart(9);
+                        bytes.push(...encoder.encode(`${cantNombre}${sub}\n`));
+                    }
+                }
+
+                bytes.push(...encoder.encode("--------------------------------\n"));
+                // Derecha: ESC a 2
+                bytes.push(ESC, 0x61, 0x02);
+                if (datos.descuento > 0) {
+                    bytes.push(...encoder.encode(`Descuento: -$${Math.round(datos.descuento).toLocaleString('es-CL')}\n`));
+                }
+                bytes.push(ESC, 0x45, 0x01);
+                bytes.push(...encoder.encode(`TOTAL: $${Math.round(datos.total).toLocaleString('es-CL')}\n`));
+                bytes.push(ESC, 0x45, 0x00);
+
+                // Corte
+                bytes.push(ESC, 0x61, 0x01);
+                bytes.push(...encoder.encode("\n\n\n\n"));
+                bytes.push(GS, 0x56, 0x42, 0x00);
+
+                return new Uint8Array(bytes);
+            },
+
+            async printOrderDirectly(ordenId) {
+                try {
+                    const res = await fetch(`/api/ordenes/${ordenId}/datos-impresion/`);
+                    if (!res.ok) {
+                        console.warn(`No se pudieron obtener datos de impresión para orden #${ordenId}`);
+                        return false;
+                    }
+                    const json = await res.json();
+                    if (!json.success || !json.orden) return false;
+
+                    const device = await this.getDevice();
+                    if (!device) {
+                        // Si no hay WebUSB emparejado previamente en este navegador, fallback silencioso
+                        return false;
+                    }
+
+                    await this.connect(device);
+                    const iface = device.configuration.interfaces[0];
+                    const outEndpoint = iface.alternate.endpoints.find(e => e.direction === 'out');
+                    if (!outEndpoint) return false;
+
+                    const payload = this.buildEscPosFromData(json.orden);
+                    await device.transferOut(outEndpoint.endpointNumber, payload);
+                    
+                    if (window.showToast) {
+                        window.showToast(`Comanda #${ordenId} enviada a impresora térmica.`, "info", 3000);
+                    }
+                    return true;
+                } catch (err) {
+                    console.error("Error imprimiendo comanda vía WebUSB:", err);
+                    return false;
+                }
+            }
+        };
     </script>
 </body>
 </html>

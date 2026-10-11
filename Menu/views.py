@@ -3005,3 +3005,175 @@ def api_mesa_toggle_activo(request):
         "message": f"Mesa '{mesa.numero}' {estado} correctamente.",
         "mesa": _mesa_to_dict(mesa),
     })
+
+
+# =============================================================================
+# CONFIGURACIONES GENERALES & DISPOSITIVO (IMPRESORA WEBUSB / HARDWARE)
+# =============================================================================
+
+@restaurante_session_required
+def configuracion_general_view(request, slug=None):
+    """
+    Panel de Configuraciones Generales del Restaurante.
+    Incluye la pestaña de 'Configuración de Dispositivo / Impresora',
+    así como tabs extensibles para Datos del Restaurante, Canales, etc.
+    """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    from Menu.terminal_auth import get_active_terminal
+    terminal_info = get_active_terminal(request)
+    terminal_obj = terminal_info.get("terminal") if terminal_info else None
+
+    # Si no hay terminal en BD pero sí cookie o viceversa, buscar terminales del restaurante
+    terminales_activas = Terminal.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
+
+    tab = request.GET.get('tab', 'dispositivo')
+
+    return render(request, "Menu/configuracion.html", {
+        "restaurante": restaurante,
+        "terminal_activa": terminal_obj,
+        "terminal_payload": terminal_info,
+        "terminales_activas": terminales_activas,
+        "tab": tab,
+        "es_admin": request.user.is_authenticated and request.user.is_staff,
+    })
+
+
+@restaurante_session_required
+def api_guardar_configuracion_dispositivo(request, slug=None):
+    """
+    Guarda o actualiza la configuración de impresión y hardware de la terminal actual.
+    Soporta WebUSB, Web Serial, Ancho de Papel (58mm/80mm), auto-impresión inmediata y alias de impresora.
+    """
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Método no permitido. Use POST."}, status=405)
+
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    body = _parse_json_body(request)
+    if not isinstance(body, dict):
+        body = {}
+
+    from Menu.terminal_auth import get_active_terminal
+    terminal_info = get_active_terminal(request)
+    terminal_obj = terminal_info.get("terminal") if terminal_info else None
+
+    terminal_id = body.get("terminal_id")
+    if not terminal_obj and terminal_id:
+        try:
+            terminal_obj = Terminal.objects.get(id=int(terminal_id), restaurante=restaurante)
+        except (Terminal.DoesNotExist, ValueError, TypeError):
+            terminal_obj = None
+
+    if not terminal_obj:
+        return JsonResponse({
+            "success": False,
+            "error": "No hay una terminal vinculada activa en este dispositivo. Primero debe activar o registrar esta terminal."
+        }, status=400)
+
+    # Validar campos de configuración
+    impresion_modo = body.get("impresion_modo", Terminal.IMPRESION_MODO_WEBUSB)
+    if impresion_modo not in [c[0] for c in Terminal.IMPRESION_MODO_CHOICES]:
+        impresion_modo = Terminal.IMPRESION_MODO_WEBUSB
+
+    ancho_papel = body.get("ancho_papel", Terminal.ANCHO_PAPEL_58MM)
+    if ancho_papel not in [c[0] for c in Terminal.ANCHO_PAPEL_CHOICES]:
+        ancho_papel = Terminal.ANCHO_PAPEL_58MM
+
+    auto_imprimir = bool(body.get("auto_imprimir_comanda", True))
+    impresora_alias = str(body.get("impresora_alias", "")).strip()[:150]
+
+    # Identificadores USB
+    usb_vendor_id = body.get("usb_vendor_id")
+    usb_product_id = body.get("usb_product_id")
+    try:
+        usb_vendor_id = int(usb_vendor_id) if usb_vendor_id is not None and str(usb_vendor_id).strip() != "" else None
+    except (ValueError, TypeError):
+        usb_vendor_id = None
+    try:
+        usb_product_id = int(usb_product_id) if usb_product_id is not None and str(usb_product_id).strip() != "" else None
+    except (ValueError, TypeError):
+        usb_product_id = None
+
+    terminal_obj.impresion_modo = impresion_modo
+    terminal_obj.ancho_papel = ancho_papel
+    terminal_obj.auto_imprimir_comanda = auto_imprimir
+    terminal_obj.impresora_alias = impresora_alias
+    terminal_obj.usb_vendor_id = usb_vendor_id
+    terminal_obj.usb_product_id = usb_product_id
+    terminal_obj.save(update_fields=[
+        "impresion_modo", "ancho_papel", "auto_imprimir_comanda",
+        "impresora_alias", "usb_vendor_id", "usb_product_id"
+    ])
+
+    return JsonResponse({
+        "success": True,
+        "message": "Configuración de terminal e impresora guardada exitosamente.",
+        "terminal": {
+            "id": terminal_obj.id,
+            "uuid": str(terminal_obj.uuid),
+            "nombre": terminal_obj.nombre,
+            "impresion_modo": terminal_obj.impresion_modo,
+            "ancho_papel": terminal_obj.ancho_papel,
+            "auto_imprimir_comanda": terminal_obj.auto_imprimir_comanda,
+            "impresora_alias": terminal_obj.impresora_alias,
+            "usb_vendor_id": terminal_obj.usb_vendor_id,
+            "usb_product_id": terminal_obj.usb_product_id,
+        }
+    })
+
+
+@restaurante_session_required
+def api_ticket_datos_impresion(request, orden_id, slug=None):
+    """
+    Retorna los datos estructurados y el texto crudo formateado ESC/POS de una comanda
+    para que el frontend de Vercel pueda enviarlo directamente al dispositivo USB / WebSerial.
+    """
+    restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
+    orden = get_object_or_404(
+        Orden.objects.filter(restaurante=restaurante).prefetch_related('items__plato', 'items__menu__platos'),
+        id=orden_id
+    )
+
+    ancho = request.GET.get('ancho', '58mm')
+    columnas = 32 if ancho == '58mm' else 42
+
+    items = []
+    for item in orden.items.all():
+        if item.plato:
+            nombre = item.plato.nombre
+            precio = float(item.plato.valor)
+        elif item.menu:
+            nombre = f"[COMBO] {item.menu.nombre}"
+            precio = float(item.menu.precio_menus)
+        else:
+            nombre = "Item"
+            precio = 0.0
+
+        items.append({
+            "nombre": nombre,
+            "cantidad": item.cantidad,
+            "precio": precio,
+            "subtotal": float(item.subtotal),
+        })
+
+    from django.utils import timezone
+    fecha = orden.fecha_hora.strftime("%d/%m/%Y %H:%M") if orden.fecha_hora else timezone.now().strftime("%d/%m/%Y %H:%M")
+
+    return JsonResponse({
+        "success": True,
+        "orden": {
+            "id": orden.id,
+            "cliente": orden.cliente or "Consumidor Final",
+            "fecha": fecha,
+            "canal": orden.get_canal_display(),
+            "tipo_servicio": orden.tipo_servicio,
+            "mesa": orden.mesa.numero if orden.mesa else None,
+            "tipo_pago": orden.get_tipo_pago_display() if orden.tipo_pago else "Por definir",
+            "items": items,
+            "descuento": float(orden.descuento or 0),
+            "total": float(orden.monto_total or 0),
+            "restaurante_nombre": restaurante.nombre,
+        },
+        "columnas": columnas,
+        "ancho": ancho
+    })
+

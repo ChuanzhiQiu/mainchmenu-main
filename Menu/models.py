@@ -967,6 +967,24 @@ class Terminal(models.Model):
         (TIPO_MOSTRADOR, 'Terminal Mostrador / Cobro'),
     ]
 
+    IMPRESION_MODO_WEBUSB = 'webusb'
+    IMPRESION_MODO_SERIAL = 'serial'
+    IMPRESION_MODO_SPOOLER = 'spooler'
+    IMPRESION_MODO_DESACTIVADO = 'disabled'
+    IMPRESION_MODO_CHOICES = [
+        (IMPRESION_MODO_WEBUSB, 'WebUSB Directo (Térmica USB)'),
+        (IMPRESION_MODO_SERIAL, 'Web Serial / COM'),
+        (IMPRESION_MODO_SPOOLER, 'Navegador Estándar (window.print)'),
+        (IMPRESION_MODO_DESACTIVADO, 'Desactivada'),
+    ]
+
+    ANCHO_PAPEL_58MM = '58mm'
+    ANCHO_PAPEL_80MM = '80mm'
+    ANCHO_PAPEL_CHOICES = [
+        (ANCHO_PAPEL_58MM, '58 mm (Estándar chica)'),
+        (ANCHO_PAPEL_80MM, '80 mm (Estándar grande)'),
+    ]
+
     restaurante = models.ForeignKey(
         'Restaurante',
         on_delete=models.CASCADE,
@@ -1011,6 +1029,42 @@ class Terminal(models.Model):
         default="",
         verbose_name="User Agent del Dispositivo"
     )
+
+    # Configuraciones de Hardware / Impresión asociadas al dispositivo (Terminal)
+    impresion_modo = models.CharField(
+        max_length=20,
+        choices=IMPRESION_MODO_CHOICES,
+        default=IMPRESION_MODO_WEBUSB,
+        verbose_name="Modo de Impresión"
+    )
+    auto_imprimir_comanda = models.BooleanField(
+        default=True,
+        verbose_name="Auto-imprimir al crear orden",
+        help_text="Imprime la comanda inmediatamente en la impresora térmica al confirmar el pedido."
+    )
+    ancho_papel = models.CharField(
+        max_length=10,
+        choices=ANCHO_PAPEL_CHOICES,
+        default=ANCHO_PAPEL_58MM,
+        verbose_name="Ancho de Papel"
+    )
+    usb_vendor_id = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="USB Vendor ID (Decimal)"
+    )
+    usb_product_id = models.IntegerField(
+        null=True,
+        blank=True,
+        verbose_name="USB Product ID (Decimal)"
+    )
+    impresora_alias = models.CharField(
+        max_length=150,
+        blank=True,
+        default="",
+        verbose_name="Nombre / Alias de la Impresora Vinculada"
+    )
+
     creado_el = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Fecha de Activación"

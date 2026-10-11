@@ -95,6 +95,11 @@ tenant_patterns = [
     path('api/turno/abrir/', tenant_action(views.api_turno_abrir), name='tenant_api_turno_abrir'),
     path('api/turno/cerrar/', tenant_action(views.api_turno_cerrar), name='tenant_api_turno_cerrar'),
     path('api/turno/forzar-cierre/', tenant_action(views.api_turno_forzar_cierre), name='tenant_api_turno_forzar_cierre'),
+
+    # Configuración General y Dispositivo
+    path('configuracion/', tenant_action(views.configuracion_general_view), name='tenant_configuracion_general'),
+    path('api/configuracion/dispositivo/', tenant_action(views.api_guardar_configuracion_dispositivo), name='tenant_api_configuracion_dispositivo'),
+    path('api/ordenes/<int:orden_id>/datos-impresion/', tenant_action(views.api_ticket_datos_impresion), name='tenant_api_ticket_datos_impresion'),
 ]
 
 
@@ -173,4 +178,9 @@ urlpatterns = [
     path('api/turno/abrir/', views.api_turno_abrir, name='api_turno_abrir'),
     path('api/turno/cerrar/', views.api_turno_cerrar, name='api_turno_cerrar'),
     path('api/turno/forzar-cierre/', views.api_turno_forzar_cierre, name='api_turno_forzar_cierre'),
+
+    # Configuración General y Dispositivo (Legacy Fallbacks)
+    path('configuracion/', views.configuracion_general_view, name='configuracion_general'),
+    path('api/configuracion/dispositivo/', views.api_guardar_configuracion_dispositivo, name='api_guardar_configuracion_dispositivo'),
+    path('api/ordenes/<int:orden_id>/datos-impresion/', views.api_ticket_datos_impresion, name='api_ticket_datos_impresion'),
 ]

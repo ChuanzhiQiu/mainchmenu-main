@@ -810,6 +810,12 @@
                         window.showToast(`Orden #${data.orden_id} creada exitosamente ($${formatMiles(data.total)}).`, "success");
                     }
 
+                    // Auto-impresión inmediata por WebUSB (cero fricción para el cajero)
+                    const autoImprimir = localStorage.getItem("mainch_auto_imprimir") !== "0";
+                    if (autoImprimir && window.MainchDirectPrint && data.orden_id) {
+                        window.MainchDirectPrint.printOrderDirectly(data.orden_id);
+                    }
+
                     // Reset form & cart
                     cart = {};
                     renderCart();

@@ -1,0 +1,679 @@
+{% extends 'Menu/base.html' %}
+{% load static %}
+
+{% block title %}Configuraciones - {{ restaurante.nombre }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Header Principal -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+        <div>
+            <h1 class="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <i data-lucide="settings" class="w-7 h-7 text-violet-500"></i>
+                <span>Configuraciones Generales</span>
+            </h1>
+            <p class="text-sm text-slate-500 mt-1">
+                Administración integral del local: periféricos, hardware, terminales y parámetros operativos.
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                <i data-lucide="store" class="w-3.5 h-3.5 text-amber-500"></i>
+                <span>Local: {{ restaurante.nombre }}</span>
+            </span>
+            {% if terminal_activa %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <i data-lucide="monitor" class="w-3.5 h-3.5 text-emerald-600"></i>
+                <span>Terminal: {{ terminal_activa.nombre }}</span>
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span>Terminal No Vinculada</span>
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Layout: Tabs de Navegación Lateral / Superior -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- Menú de Pestañas / Módulos -->
+        <aside class="lg:col-span-1 space-y-2">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
+                <div class="text-xs font-bold uppercase tracking-wider text-slate-400 px-3 py-2">
+                    Módulos
+                </div>
+                <nav class="space-y-1">
+                    <button type="button" 
+                            onclick="switchConfigTab('dispositivo')"
+                            id="tab-btn-dispositivo"
+                            class="config-tab-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition text-violet-700 bg-violet-50 border border-violet-200">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="printer" class="w-4 h-4 text-violet-600"></i>
+                            <span>Dispositivo e Impresora</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-violet-400"></i>
+                    </button>
+
+                    <button type="button" 
+                            onclick="switchConfigTab('local')"
+                            id="tab-btn-local"
+                            class="config-tab-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="store" class="w-4 h-4 text-slate-400"></i>
+                            <span>Datos del Local</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                    </button>
+
+                    <button type="button" 
+                            onclick="switchConfigTab('operaciones')"
+                            id="tab-btn-operaciones"
+                            class="config-tab-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-600 hover:bg-slate-50 hover:text-slate-900">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="sliders" class="w-4 h-4 text-slate-400"></i>
+                            <span>Parámetros del POS</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Card Informativa del Navegador / WebUSB -->
+            <div class="bg-slate-900 text-white rounded-xl p-4 shadow-sm text-xs space-y-2">
+                <div class="flex items-center gap-2 font-bold text-amber-400">
+                    <i data-lucide="zap" class="w-4 h-4"></i>
+                    <span>Soporte WebUSB</span>
+                </div>
+                <p class="text-slate-300 leading-relaxed">
+                    Tu app en Vercel se comunica directamente por cable USB con la impresora térmica del computador mediante la API WebUSB del navegador.
+                </p>
+                <div id="webusb-support-badge" class="pt-1">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                        Detectando compatibilidad...
+                    </span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Contenido Dinámico de los Módulos -->
+        <main class="lg:col-span-3 space-y-6">
+
+            <!-- ========================================================= -->
+            <!-- MÓDULO 1: CONFIGURACIÓN DEL DISPOSITIVO E IMPRESORA       -->
+            <!-- ========================================================= -->
+            <div id="tab-content-dispositivo" class="config-tab-content space-y-6">
+                
+                <!-- Estado del Dispositivo Actual -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                <i data-lucide="monitor-speaker" class="w-5 h-5 text-violet-600"></i>
+                                <span>Dispositivo Actual (Terminal)</span>
+                            </h2>
+                            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                                Identificación y hardware de esta computadora en el restaurante.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            {% if terminal_activa %}
+                            <a href="{% url 'Menu:tenant_desactivar_terminal' %}" 
+                               onclick="return confirm('¿Desvincular esta terminal del restaurante? Tendrá que volver a vincularla.');"
+                               class="text-xs px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 font-semibold transition inline-flex items-center gap-1.5">
+                                <i data-lucide="unlink" class="w-3.5 h-3.5"></i>
+                                <span>Desvincular</span>
+                            </a>
+                            {% else %}
+                            <a href="{% url 'Menu:tenant_activar_terminal' %}" 
+                               class="text-xs px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold transition inline-flex items-center gap-1.5 shadow-sm">
+                                <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                                <span>Vincular Este Dispositivo</span>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                        <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-100">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Nombre Terminal</span>
+                            <span class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                <i data-lucide="tag" class="w-3.5 h-3.5 text-slate-500"></i>
+                                {{ terminal_activa.nombre|default:"Sin vincular" }}
+                            </span>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-100">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Tipo de Rol</span>
+                            <span class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                <i data-lucide="monitor" class="w-3.5 h-3.5 text-slate-500"></i>
+                                {{ terminal_activa.get_tipo_display|default:"Punto de Venta" }}
+                            </span>
+                        </div>
+                        <div class="bg-slate-50 p-3.5 rounded-lg border border-slate-100">
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Identificador Único</span>
+                            <span class="text-xs font-mono text-slate-600 truncate block" title="{{ terminal_activa.uuid|default:'' }}">
+                                {{ terminal_activa.uuid|default:"No asignado" }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración de Impresión ESC/POS y WebUSB -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="printer" class="w-5 h-5 text-violet-600"></i>
+                            <span>Impresora de Comandas del Dispositivo</span>
+                        </h2>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                            Conecta la impresora térmica conectada al computador para impresión inmediata de tickets.
+                        </p>
+                    </div>
+
+                    <form id="form-config-dispositivo" onsubmit="guardarConfigDispositivo(event)" class="space-y-6">
+                        <input type="hidden" id="cfg-terminal-id" value="{{ terminal_activa.id|default:'' }}">
+
+                        <!-- Selección del Modo de Impresión -->
+                        <div class="space-y-2">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                                Modo de Conexión de Impresora
+                            </label>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <!-- Opción WebUSB -->
+                                <label class="relative flex flex-col p-4 bg-white border-2 rounded-xl cursor-pointer hover:border-violet-400 transition" id="card-modo-webusb">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <input type="radio" name="impresion_modo" value="webusb" class="text-violet-600 focus:ring-violet-500" 
+                                               {% if not terminal_activa or terminal_activa.impresion_modo == 'webusb' %}checked{% endif %}
+                                               onchange="actualizarModoImpresionUI()">
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-violet-100 text-violet-800">Recomendado</span>
+                                    </div>
+                                    <span class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                        <i data-lucide="usb" class="w-4 h-4 text-violet-600"></i>
+                                        WebUSB Directo
+                                    </span>
+                                    <span class="text-xs text-slate-500 mt-1">
+                                        Impresión instantánea por cable USB desde Chrome/Edge sin ventanas emergentes.
+                                    </span>
+                                </label>
+
+                                <!-- Opción Web Serial -->
+                                <label class="relative flex flex-col p-4 bg-white border-2 rounded-xl cursor-pointer hover:border-violet-400 transition" id="card-modo-serial">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <input type="radio" name="impresion_modo" value="serial" class="text-violet-600 focus:ring-violet-500"
+                                               {% if terminal_activa.impresion_modo == 'serial' %}checked{% endif %}
+                                               onchange="actualizarModoImpresionUI()">
+                                    </div>
+                                    <span class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                        <i data-lucide="cpu" class="w-4 h-4 text-slate-600"></i>
+                                        Web Serial / COM
+                                    </span>
+                                    <span class="text-xs text-slate-500 mt-1">
+                                        Para comanderas con convertidor serie/USB o puerto COM virtual.
+                                    </span>
+                                </label>
+
+                                <!-- Opción Diálogo Navegador window.print -->
+                                <label class="relative flex flex-col p-4 bg-white border-2 rounded-xl cursor-pointer hover:border-violet-400 transition" id="card-modo-spooler">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <input type="radio" name="impresion_modo" value="spooler" class="text-violet-600 focus:ring-violet-500"
+                                               {% if terminal_activa.impresion_modo == 'spooler' %}checked{% endif %}
+                                               onchange="actualizarModoImpresionUI()">
+                                    </div>
+                                    <span class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                        <i data-lucide="file-text" class="w-4 h-4 text-slate-600"></i>
+                                        Diálogo del Navegador
+                                    </span>
+                                    <span class="text-xs text-slate-500 mt-1">
+                                        Abre el cuadro tradicional de impresión (window.print) del navegador.
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Sección de Emparejamiento WebUSB / Hardware -->
+                        <div id="seccion-emparejamiento-usb" class="bg-violet-50/70 border border-violet-200 rounded-xl p-5 space-y-4">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <h3 class="text-sm font-bold text-violet-950 flex items-center gap-2">
+                                        <i data-lucide="cable" class="w-4 h-4 text-violet-600"></i>
+                                        <span>Emparejamiento de Impresora USB Local</span>
+                                    </h3>
+                                    <p class="text-xs text-violet-800 mt-0.5">
+                                        Selecciona la impresora física conectada al computador para darle permisos al navegador.
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" 
+                                            onclick="escanearYEmparejarUSB()"
+                                            id="btn-emparejar-usb"
+                                            class="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-sm">
+                                        <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                        <span>Buscar Dispositivo USB</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Estado del dispositivo USB conectado en el cliente -->
+                            <div class="bg-white rounded-lg border border-violet-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div class="flex items-start gap-3">
+                                    <div class="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center text-violet-700 shrink-0">
+                                        <i data-lucide="printer" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-bold text-slate-800" id="usb-device-name">
+                                            {{ terminal_activa.impresora_alias|default:"Ninguna impresora USB vinculada aún" }}
+                                        </div>
+                                        <div class="text-xs text-slate-500 font-mono mt-0.5" id="usb-device-ids">
+                                            {% if terminal_activa.usb_vendor_id %}
+                                                Vendor ID: {{ terminal_activa.usb_vendor_id }} | Product ID: {{ terminal_activa.usb_product_id }}
+                                            {% else %}
+                                                Haz clic en 'Buscar Dispositivo USB' para autorizar el acceso.
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" 
+                                            onclick="imprimirTicketPrueba()"
+                                            id="btn-test-print"
+                                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                                        <i data-lucide="play" class="w-3.5 h-3.5 text-amber-400"></i>
+                                        <span>Probar Impresión</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Inputs ocultos para persistencia -->
+                            <input type="hidden" id="cfg-usb-vendor-id" value="{{ terminal_activa.usb_vendor_id|default:'' }}">
+                            <input type="hidden" id="cfg-usb-product-id" value="{{ terminal_activa.usb_product_id|default:'' }}">
+                            <input type="hidden" id="cfg-impresora-alias" value="{{ terminal_activa.impresora_alias|default:'' }}">
+                        </div>
+
+                        <!-- Parámetros de Impresión de Comanda -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <!-- Ancho de Papel -->
+                            <div>
+                                <label for="cfg-ancho-papel" class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Formato / Ancho de Papel Térmico
+                                </label>
+                                <select id="cfg-ancho-papel" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-500">
+                                    <option value="58mm" {% if not terminal_activa or terminal_activa.ancho_papel == '58mm' %}selected{% endif %}>
+                                        58 mm (Estándar chica / 32 columnas)
+                                    </option>
+                                    <option value="80mm" {% if terminal_activa.ancho_papel == '80mm' %}selected{% endif %}>
+                                        80 mm (Estándar grande / 42-48 columnas)
+                                    </option>
+                                </select>
+                                <p class="text-[11px] text-slate-500 mt-1">Ajusta el margen y tamaño de letra del ticket de cocina.</p>
+                            </div>
+
+                            <!-- Auto-impresión inmediata -->
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Comportamiento en Caja (POS)
+                                </label>
+                                <label class="flex items-start gap-3 p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-50 cursor-pointer">
+                                    <input type="checkbox" id="cfg-auto-imprimir" class="mt-0.5 rounded text-violet-600 focus:ring-violet-500"
+                                           {% if not terminal_activa or terminal_activa.auto_imprimir_comanda %}checked{% endif %}>
+                                    <div>
+                                        <span class="text-xs font-bold text-slate-800 block">Impresión Inmediata al Confirmar</span>
+                                        <span class="text-[11px] text-slate-500">Dispara la comanda a la impresora física sin pasos adicionales.</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Botón Guardar Cambios -->
+                        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                            <button type="submit" 
+                                    id="btn-guardar-cfg"
+                                    class="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-sm font-bold transition flex items-center gap-2 shadow-sm">
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                <span>Guardar Configuración del Dispositivo</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- MÓDULO 2: DATOS DEL LOCAL (EXTENSIBLE)                     -->
+            <!-- ========================================================= -->
+            <div id="tab-content-local" class="config-tab-content hidden space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                    <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="store" class="w-5 h-5 text-amber-500"></i>
+                        <span>Información del Restaurante</span>
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1">Nombre Comercial</span>
+                            <input type="text" value="{{ restaurante.nombre }}" disabled class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                        </div>
+                        <div>
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1">Identificador Slug</span>
+                            <input type="text" value="{{ restaurante.slug }}" disabled class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono text-slate-700">
+                        </div>
+                        <div class="md:col-span-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1">Dirección</span>
+                            <input type="text" value="{{ restaurante.direccion|default:'No especificada' }}" disabled class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================================= -->
+            <!-- MÓDULO 3: PARÁMETROS DEL POS (EXTENSIBLE)                 -->
+            <!-- ========================================================= -->
+            <div id="tab-content-operaciones" class="config-tab-content hidden space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4">
+                    <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <i data-lucide="sliders" class="w-5 h-5 text-indigo-500"></i>
+                        <span>Reglas Operativas del POS</span>
+                    </h2>
+                    <p class="text-sm text-slate-600">
+                        Módulo preparado para ampliaciones de moneda, propina sugerida, redondeo e integraciones fiscales.
+                    </p>
+                </div>
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- JAVASCRIPT: MOTOR WEBUSB, ESC/POS Y GESTOR DE CONFIGURACIONES           -->
+<!-- ========================================================================= -->
+<script>
+    // 1. Selector de Pestañas
+    function switchConfigTab(tabId) {
+        document.querySelectorAll('.config-tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.config-tab-btn').forEach(btn => {
+            btn.className = "config-tab-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition text-slate-600 hover:bg-slate-50 hover:text-slate-900";
+        });
+
+        const activeContent = document.getElementById(`tab-content-${tabId}`);
+        const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+
+        if (activeContent) activeContent.classList.remove('hidden');
+        if (activeBtn) {
+            activeBtn.className = "config-tab-btn w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition text-violet-700 bg-violet-50 border border-violet-200";
+        }
+        if (window.lucide) lucide.createIcons();
+    }
+
+    // 2. Detección de Soporte WebUSB en el Navegador
+    document.addEventListener("DOMContentLoaded", () => {
+        const badge = document.getElementById("webusb-support-badge");
+        if (badge) {
+            if (navigator.usb) {
+                badge.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800"><i data-lucide="check" class="w-3 h-3"></i> WebUSB Compatible (Chromium)</span>';
+            } else {
+                badge.innerHTML = '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-400 border border-amber-800"><i data-lucide="alert-triangle" class="w-3 h-3"></i> WebUSB no soportado (Use Chrome/Edge)</span>';
+            }
+            if (window.lucide) lucide.createIcons({ root: badge });
+        }
+        actualizarModoImpresionUI();
+    });
+
+    function actualizarModoImpresionUI() {
+        const modo = document.querySelector('input[name="impresion_modo"]:checked')?.value || 'webusb';
+        const secUSB = document.getElementById("seccion-emparejamiento-usb");
+        if (secUSB) {
+            if (modo === 'webusb' || modo === 'serial') {
+                secUSB.classList.remove('hidden');
+            } else {
+                secUSB.classList.add('hidden');
+            }
+        }
+    }
+
+    // 3. WebUSB Manager para Dispositivos ESC/POS
+    window.MainchPrinter = {
+        device: null,
+
+        async getPairedDevice(vendorId = null, productId = null) {
+            if (!navigator.usb) return null;
+            try {
+                const devices = await navigator.usb.getDevices();
+                if (devices.length === 0) return null;
+                if (vendorId && productId) {
+                    const match = devices.find(d => d.vendorId === vendorId && d.productId === productId);
+                    if (match) return match;
+                }
+                return devices[0];
+            } catch (err) {
+                console.warn("Error consultando dispositivos autorizados:", err);
+                return null;
+            }
+        },
+
+        async requestDevice() {
+            if (!navigator.usb) {
+                throw new Error("Su navegador no soporta WebUSB. Por favor utilice Google Chrome o Microsoft Edge.");
+            }
+            // Solicitar acceso a cualquier dispositivo de clase impresora o vendor-specific
+            const device = await navigator.usb.requestDevice({
+                filters: [] // Diálogo del navegador lista todos los dispositivos USB conectados
+            });
+            this.device = device;
+            return device;
+        },
+
+        async connect(device) {
+            if (!device) throw new Error("No hay dispositivo seleccionado.");
+            if (!device.opened) {
+                await device.open();
+            }
+            if (device.configuration === null) {
+                await device.selectConfiguration(1);
+            }
+            // Reclamar la primera interfaz disponible
+            const iface = device.configuration.interfaces[0];
+            if (iface && !iface.claimed) {
+                await device.claimInterface(iface.interfaceNumber);
+            }
+            return device;
+        },
+
+        async sendData(device, dataUint8) {
+            await this.connect(device);
+            // Localizar el endpoint OUT (de salida hacia la impresora)
+            const iface = device.configuration.interfaces[0];
+            const outEndpoint = iface.alternate.endpoints.find(e => e.direction === 'out');
+            if (!outEndpoint) {
+                throw new Error("No se encontró endpoint de salida USB en el dispositivo.");
+            }
+            const result = await device.transferOut(outEndpoint.endpointNumber, dataUint8);
+            return result;
+        }
+    };
+
+    // 4. Emparejar USB desde el botón
+    async function escanearYEmparejarUSB() {
+        try {
+            const device = await MainchPrinter.requestDevice();
+            if (device) {
+                const alias = device.productName || `Impresora USB (${device.vendorId}:${device.productId})`;
+                document.getElementById("usb-device-name").textContent = alias;
+                document.getElementById("usb-device-ids").textContent = `Vendor ID: ${device.vendorId} | Product ID: ${device.productId}`;
+                
+                document.getElementById("cfg-usb-vendor-id").value = device.vendorId;
+                document.getElementById("cfg-usb-product-id").value = device.productId;
+                document.getElementById("cfg-impresora-alias").value = alias;
+
+                // Guardar en localStorage de este navegador
+                localStorage.setItem("mainch_printer_vendor_id", device.vendorId);
+                localStorage.setItem("mainch_printer_product_id", device.productId);
+                localStorage.setItem("mainch_printer_alias", alias);
+
+                if (window.showToast) {
+                    window.showToast(`Impresora '${alias}' emparejada con éxito. Guarde los cambios.`, "success");
+                }
+            }
+        } catch (err) {
+            console.error("Error emparejando USB:", err);
+            if (err.name !== "NotFoundError") {
+                if (window.showToast) window.showToast(err.message, "error");
+            }
+        }
+    }
+
+    // 5. Generador de Comandos ESC/POS Básicos en Javascript
+    function generarEscPosTicket(datos) {
+        const encoder = new TextEncoder();
+        const ESC = 0x1B;
+        const GS = 0x1D;
+
+        let bytes = [];
+
+        // Inicializar impresora: ESC @
+        bytes.push(ESC, 0x40);
+
+        // Alinear al centro: ESC a 1
+        bytes.push(ESC, 0x61, 0x01);
+
+        // Negrita encendida: ESC E 1
+        bytes.push(ESC, 0x45, 0x01);
+        bytes.push(...encoder.encode(`${datos.restaurante_nombre || "MAINCH"}\n`));
+        bytes.push(ESC, 0x45, 0x00); // Negrita apagada
+
+        bytes.push(...encoder.encode(`COMANDA #${datos.orden_id || "TEST"}\n`));
+        bytes.push(...encoder.encode(`${datos.fecha || new Date().toLocaleString()}\n`));
+        bytes.push(...encoder.encode("--------------------------------\n"));
+
+        // Alinear a la izquierda: ESC a 0
+        bytes.push(ESC, 0x61, 0x00);
+
+        if (datos.cliente) {
+            bytes.push(...encoder.encode(`Cliente: ${datos.cliente}\n`));
+        }
+        if (datos.mesa) {
+            bytes.push(...encoder.encode(`Mesa: ${datos.mesa}\n`));
+        }
+        bytes.push(...encoder.encode(`Tipo: ${datos.tipo_servicio || "Mostrador"}\n`));
+        bytes.push(...encoder.encode("--------------------------------\n"));
+
+        // Items
+        if (datos.items && datos.items.length > 0) {
+            for (const item of datos.items) {
+                const linea = `${item.cantidad}x ${item.nombre}`.padEnd(24).substring(0, 24) +
+                              ` $${Math.round(item.subtotal || 0).toLocaleString('es-CL')}\n`;
+                bytes.push(...encoder.encode(linea));
+            }
+        } else {
+            bytes.push(...encoder.encode("1x Ticket de Prueba de Impresora\n"));
+        }
+
+        bytes.push(...encoder.encode("--------------------------------\n"));
+        // Alinear a la derecha: ESC a 2
+        bytes.push(ESC, 0x61, 0x02);
+        bytes.push(ESC, 0x45, 0x01);
+        bytes.push(...encoder.encode(`TOTAL: $${Math.round(datos.total || 0).toLocaleString('es-CL')}\n`));
+        bytes.push(ESC, 0x45, 0x00);
+
+        // Alinear al centro: ESC a 1
+        bytes.push(ESC, 0x61, 0x01);
+        bytes.push(...encoder.encode("\n¡Gracias por su preferencia!\n\n\n\n"));
+
+        // Cortar papel: GS V 66 0
+        bytes.push(GS, 0x56, 0x42, 0x00);
+
+        return new Uint8Array(bytes);
+    }
+
+    // 6. Probar Impresión WebUSB
+    async function imprimirTicketPrueba() {
+        const btn = document.getElementById("btn-test-print");
+        const vId = parseInt(document.getElementById("cfg-usb-vendor-id").value) || null;
+        const pId = parseInt(document.getElementById("cfg-usb-product-id").value) || null;
+
+        try {
+            if (btn) btn.disabled = true;
+
+            let device = await MainchPrinter.getPairedDevice(vId, pId);
+            if (!device) {
+                device = await MainchPrinter.requestDevice();
+            }
+
+            const ticketBytes = generarEscPosTicket({
+                restaurante_nombre: "{{ restaurante.nombre }}",
+                orden_id: "PRUEBA",
+                cliente: "Test Cajero",
+                mesa: "1",
+                tipo_servicio: "Prueba WebUSB",
+                items: [
+                    { cantidad: 1, nombre: "Test Conexión Directa", subtotal: 0 },
+                    { cantidad: 1, nombre: "Vercel -> USB Local", subtotal: 0 }
+                ],
+                total: 0
+            });
+
+            await MainchPrinter.sendData(device, ticketBytes);
+
+            if (window.showToast) {
+                window.showToast("¡Ticket de prueba impreso con éxito!", "success");
+            }
+        } catch (err) {
+            console.error("Error en test print:", err);
+            if (window.showToast) {
+                window.showToast("Fallo al imprimir: " + err.message, "error");
+            } else {
+                alert("Fallo al imprimir: " + err.message);
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // 7. Guardar Configuración del Dispositivo en el Backend
+    async function guardarConfigDispositivo(event) {
+        event.preventDefault();
+        const btn = document.getElementById("btn-guardar-cfg");
+        const terminalId = document.getElementById("cfg-terminal-id").value;
+
+        const payload = {
+            terminal_id: terminalId || null,
+            impresion_modo: document.querySelector('input[name="impresion_modo"]:checked')?.value || 'webusb',
+            ancho_papel: document.getElementById("cfg-ancho-papel").value,
+            auto_imprimir_comanda: document.getElementById("cfg-auto-imprimir").checked,
+            impresora_alias: document.getElementById("cfg-impresora-alias").value,
+            usb_vendor_id: document.getElementById("cfg-usb-vendor-id").value || null,
+            usb_product_id: document.getElementById("cfg-usb-product-id").value || null,
+        };
+
+        try {
+            if (btn) btn.disabled = true;
+
+            const res = await fetch("{% url 'Menu:tenant_api_configuracion_dispositivo' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": "{{ csrf_token }}",
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (res.ok && data.success) {
+                // Guardar también en localStorage para rápida lectura por los pedidos
+                localStorage.setItem("mainch_impresion_modo", payload.impresion_modo);
+                localStorage.setItem("mainch_ancho_papel", payload.ancho_papel);
+                localStorage.setItem("mainch_auto_imprimir", payload.auto_imprimir_comanda ? "1" : "0");
+
+                if (window.showToast) {
+                    window.showToast("Configuración guardada correctamente.", "success");
+                }
+            } else {
+                const err = data.error || data.message || "Error al guardar.";
+                if (window.showToast) window.showToast(err, "error");
+            }
+        } catch (err) {
+            console.error(err);
+            if (window.showToast) window.showToast("Error de conexión al guardar configuración.", "error");
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

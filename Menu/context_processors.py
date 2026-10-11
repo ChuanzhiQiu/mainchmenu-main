@@ -18,6 +18,7 @@ def _build_tenant_urls(slug):
         "url_analisis": f"/r/{slug}/analisis/",
         "url_crud": f"/r/{slug}/crud/",
         "url_cajeros": f"/r/{slug}/cajeros/",
+        "url_configuracion": f"/r/{slug}/configuracion/",
     }
 
 
@@ -44,4 +45,5 @@ def tenant_navigation(request):
         "url_analisis": reverse("Menu:data_analisis"),
         "url_crud": reverse("Menu:crud"),
         "url_cajeros": reverse("Menu:cajeros_admin"),
+        "url_configuracion": reverse("Menu:configuracion_general"),
     }
