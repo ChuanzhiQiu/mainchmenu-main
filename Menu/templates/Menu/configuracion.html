@@ -287,6 +287,59 @@
                                 </div>
                             </div>
 
+                            <!-- Emparejamiento Web Serial / COM -->
+                            <div class="bg-white rounded-lg border border-sky-200 p-4 space-y-3">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div class="flex items-start gap-3">
+                                        <div class="w-9 h-9 rounded-lg bg-sky-100 flex items-center justify-center text-sky-700 shrink-0">
+                                            <i data-lucide="cpu" class="w-5 h-5"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-bold text-slate-800">Web Serial / Puerto COM</div>
+                                            <div class="text-xs text-slate-500 font-mono mt-0.5" id="serial-device-name">
+                                                Empareja la impresora serie para saltar el bloqueo del driver USB de Windows.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button type="button"
+                                                onclick="escanearYEmparejarSerial()"
+                                                id="btn-emparejar-serial"
+                                                class="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-sm">
+                                            <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                            <span>Buscar Dispositivo Web Serial / COM</span>
+                                        </button>
+                                        <button type="button"
+                                                onclick="probarImpresionSerial()"
+                                                id="btn-test-serial"
+                                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                                            <i data-lucide="play" class="w-3.5 h-3.5 text-sky-400"></i>
+                                            <span>Probar Serial</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Alerta de driver bloqueado (se muestra si WebUSB lanza Access denied) -->
+                            <div id="alerta-driver-usb" class="hidden bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-3">
+                                <div class="flex items-start gap-2.5 text-rose-800 text-xs font-semibold">
+                                    <i data-lucide="alert-octagon" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                                    <span id="alerta-driver-usb-msg">
+                                        El driver de Windows tiene bloqueada la impresora USB. Recomendamos cambiar al modo 'Web Serial' o 'Impresora del Sistema / Modo Kiosk'.
+                                    </span>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button type="button" onclick="probarImpresionSerial()"
+                                            class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-[11px] font-bold transition">
+                                        Probar por Web Serial
+                                    </button>
+                                    <button type="button" onclick="probarImpresionIframe()"
+                                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-[11px] font-bold transition">
+                                        Probar por Iframe / Sistema
+                                    </button>
+                                </div>
+                            </div>
+
                             <!-- Inputs ocultos para persistencia -->
                             <input type="hidden" id="cfg-usb-vendor-id" value="{{ terminal_activa.usb_vendor_id|default:'' }}">
                             <input type="hidden" id="cfg-usb-product-id" value="{{ terminal_activa.usb_product_id|default:'' }}">
@@ -337,6 +390,33 @@
                             </button>
                         </div>
                     </form>
+                </div>
+
+                <!-- Modo Kiosk / Impresión Silenciosa -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                            <i data-lucide="monitor-check" class="w-5 h-5 text-violet-600"></i>
+                            <span>Diálogo del Navegador / Modo Kiosk</span>
+                        </h2>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+                            Impresión 100% silenciosa y sin ventanas emergentes usando el diálogo de impresión del sistema.
+                        </p>
+                    </div>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Si tu impresora queda con driver propietario, la vía más estable es dejar que Windows imprima por el spooler.
+                        Arranca Chrome o Edge con el flag de kiosk-printing y cada <code class="px-1 py-0.5 rounded bg-slate-100 font-mono text-[11px]">window.print()</code>
+                        se enviará directo a la impresora predeterminada, sin diálogo.
+                    </p>
+                    <div class="bg-slate-900 text-slate-100 rounded-lg p-3 font-mono text-[11px] sm:text-xs overflow-x-auto">
+                        chrome.exe --kiosk --kiosk-printing
+                    </div>
+                    <ol class="list-decimal list-inside text-xs text-slate-600 space-y-1 leading-relaxed">
+                        <li>Crea un acceso directo a Google Chrome o Microsoft Edge.</li>
+                        <li>Agrega los flags <strong>--kiosk --kiosk-printing</strong> al final del destino.</li>
+                        <li>Marca la impresora térmica como predeterminada en Windows.</li>
+                        <li>Abre el POS desde ese acceso directo y activa el modo <strong>Diálogo del Navegador</strong>.</li>
+                    </ol>
                 </div>
             </div>
 
@@ -535,6 +615,152 @@
         }
     }
 
+    // 4.b Emparejar Web Serial / COM (fallback cuando el driver de Windows bloquea WebUSB)
+    async function escanearYEmparejarSerial() {
+        try {
+            if (!navigator.serial) {
+                throw new Error("Web Serial no está disponible en este navegador. Use Google Chrome o Microsoft Edge.");
+            }
+            const port = await navigator.serial.requestPort();
+            const info = (port && port.getInfo) ? port.getInfo() : {};
+            const label = info.usbVendorId
+                ? `Puerto Serial USB (${info.usbVendorId}:${info.usbProductId || '----'})`
+                : "Puerto Serial / COM emparejado";
+
+            const nameEl = document.getElementById("serial-device-name");
+            if (nameEl) nameEl.textContent = `${label} · listo para imprimir`;
+
+            // Persistir emparejamiento y forzar el modo serial para las comandas
+            localStorage.setItem("mainch_serial_paired", "1");
+            localStorage.setItem("mainch_impresion_modo", "serial");
+
+            const radioSerial = document.querySelector('input[name="impresion_modo"][value="serial"]');
+            if (radioSerial) {
+                radioSerial.checked = true;
+                actualizarModoImpresionUI();
+            }
+            ocultarAlertaDriverUSB();
+
+            if (window.showToast) {
+                window.showToast("Dispositivo Web Serial emparejado. Modo de impresión: Web Serial.", "success");
+            }
+        } catch (err) {
+            console.error("Error emparejando Web Serial:", err);
+            if (err.name !== "NotFoundError") {
+                if (window.showToast) window.showToast(err.message, "error");
+            }
+        }
+    }
+
+    // 4.c Alerta de driver Windows bloqueando WebUSB
+    function mostrarAlertaDriverUSB() {
+        const alerta = document.getElementById("alerta-driver-usb");
+        if (alerta) {
+            alerta.classList.remove("hidden");
+            if (window.lucide) lucide.createIcons({ root: alerta });
+        }
+    }
+
+    function ocultarAlertaDriverUSB() {
+        const alerta = document.getElementById("alerta-driver-usb");
+        if (alerta) alerta.classList.add("hidden");
+    }
+
+    // 4.d Prueba de impresión por Web Serial
+    async function probarImpresionSerial() {
+        const btn = document.getElementById("btn-test-serial");
+        try {
+            if (btn) btn.disabled = true;
+            if (!navigator.serial) {
+                throw new Error("Web Serial no soportado en este navegador. Use Chrome o Edge.");
+            }
+
+            let ports = await navigator.serial.getPorts();
+            if (!ports.length) {
+                ports = [await navigator.serial.requestPort()];
+                localStorage.setItem("mainch_serial_paired", "1");
+                localStorage.setItem("mainch_impresion_modo", "serial");
+            }
+
+            const port = ports[0];
+            if (!port.readable && !port.writable) {
+                await port.open({ baudRate: 9600 });
+            }
+
+            const writer = port.writable.getWriter();
+            try {
+                await writer.write(generarEscPosTicket({
+                    restaurante_nombre: "{{ restaurante.nombre }}",
+                    orden_id: "PRUEBA-SERIAL",
+                    cliente: "Test Cajero",
+                    mesa: "1",
+                    tipo_servicio: "Prueba Web Serial",
+                    items: [
+                        { cantidad: 1, nombre: "Test Puerto Serie / COM", subtotal: 0 },
+                        { cantidad: 1, nombre: "Fallback driver Windows", subtotal: 0 }
+                    ],
+                    total: 0
+                }));
+                await writer.ready;
+            } finally {
+                writer.releaseLock();
+            }
+
+            ocultarAlertaDriverUSB();
+            if (window.showToast) {
+                window.showToast("¡Ticket de prueba enviado por Web Serial!", "success");
+            }
+        } catch (err) {
+            console.error("Error en test print serial:", err);
+            if (err.name !== "NotFoundError") {
+                if (window.showToast) window.showToast("Fallo Web Serial: " + err.message, "error");
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // 4.e Prueba de impresión silenciosa por iframe (modo kiosk / impresora del sistema)
+    function probarImpresionIframe() {
+        try {
+            const html = `<!doctype html><html><head><meta charset="utf-8"><title>Prueba</title>
+                <style>body{font-family:monospace;width:58mm;margin:0;padding:6px;font-size:11px}
+                .c{text-align:center}h3{margin:2px 0}hr{border:0;border-top:1px dashed #000;margin:4px 0}</style>
+                </head><body>
+                <div class="c"><h3>{{ restaurante.nombre }}</h3><div>PRUEBA DE IMPRESIÓN</div></div>
+                <hr><div>Modo: Impresora del Sistema / Iframe</div>
+                <div>Fecha: ${new Date().toLocaleString()}</div>
+                <hr><div class="c">¡Impresión silenciosa OK!</div></body></html>`;
+
+            let iframe = document.getElementById("mainch-test-print-iframe");
+            if (!iframe) {
+                iframe = document.createElement("iframe");
+                iframe.id = "mainch-test-print-iframe";
+                iframe.style.cssText = "position:fixed; top:-9999px; left:-9999px; width:0; height:0; border:0;";
+                document.body.appendChild(iframe);
+            }
+
+            const doc = iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+
+            setTimeout(() => {
+                try {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                } catch (e) {
+                    console.warn("No se pudo imprimir el iframe de prueba:", e);
+                }
+            }, 250);
+
+            ocultarAlertaDriverUSB();
+        } catch (err) {
+            console.error("Error en test print iframe:", err);
+            if (window.showToast) window.showToast("Fallo Impresión del Sistema: " + err.message, "error");
+        }
+    }
+
     // 5. Generador de Comandos ESC/POS Básicos en Javascript
     function generarEscPosTicket(datos) {
         const encoder = new TextEncoder();
@@ -632,7 +858,17 @@
             }
         } catch (err) {
             console.error("Error en test print:", err);
-            if (window.showToast) {
+            const esAccesoDenegado = err && (
+                err.name === "SecurityError" ||
+                err.name === "Access denied" ||
+                /access denied|permission|not allowed|securityerror/i.test(err.message || "")
+            );
+            if (esAccesoDenegado) {
+                mostrarAlertaDriverUSB();
+                if (window.showToast) {
+                    window.showToast("El driver de Windows bloquea el acceso USB. Prueba con 'Web Serial' o el modo Kiosk.", "warning", 7000);
+                }
+            } else if (window.showToast) {
                 window.showToast("Fallo al imprimir: " + err.message, "error");
             } else {
                 alert("Fallo al imprimir: " + err.message);

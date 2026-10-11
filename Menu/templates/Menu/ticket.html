@@ -241,6 +241,9 @@
         {% if autoprint %}
         window.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
+                // Guard para evitar doble impresión cuando el padre ya invoca print() en el iframe.
+                if (window.__mainchTicketPrinted) return;
+                window.__mainchTicketPrinted = true;
                 window.print();
             }, 350);
         });

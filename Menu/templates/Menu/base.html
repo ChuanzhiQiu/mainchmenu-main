@@ -336,7 +336,8 @@
         });
 
         // =====================================================================
-        // GLOBAL WEBUSB ESC/POS PRINTER SERVICE (MainchDirectPrint)
+        // GLOBAL ESC/POS PRINTER SERVICE (MainchDirectPrint)
+        // Motor de impresión con triple fallback: WebUSB -> Web Serial -> Iframe
         // =====================================================================
         window.MainchDirectPrint = {
             async getDevice() {
@@ -421,37 +422,175 @@
                 return new Uint8Array(bytes);
             },
 
-            async printOrderDirectly(ordenId) {
+            // Obtiene los datos de impresión de una orden (filtrados por tenant en backend).
+            async fetchOrdenData(ordenId) {
+                const res = await fetch(`/api/ordenes/${ordenId}/datos-impresion/`);
+                if (!res.ok) {
+                    throw new Error(`No se pudieron obtener datos de impresión para la orden #${ordenId} (HTTP ${res.status}).`);
+                }
+                const json = await res.json();
+                if (!json.success || !json.orden) {
+                    throw new Error(`Respuesta inválida de datos de impresión para la orden #${ordenId}.`);
+                }
+                return json.orden;
+            },
+
+            // ---- Motor 1: WebUSB directo (ESC/POS raw) ----
+            async printViaWebUSB(ordenId) {
+                const datos = await this.fetchOrdenData(ordenId);
+                const device = await this.getDevice();
+                if (!device) {
+                    const err = new Error("No hay impresora WebUSB emparejada en este navegador.");
+                    err.name = "NoWebUSBDeviceError";
+                    throw err;
+                }
+
+                await this.connect(device);
+                const iface = device.configuration.interfaces[0];
+                const outEndpoint = iface.alternate.endpoints.find(e => e.direction === 'out');
+                if (!outEndpoint) {
+                    throw new Error("No se encontró endpoint de salida USB en la impresora.");
+                }
+
+                const payload = this.buildEscPosFromData(datos);
+                await device.transferOut(outEndpoint.endpointNumber, payload);
+
+                if (window.showToast) {
+                    window.showToast(`Comanda #${ordenId} enviada a impresora térmica (WebUSB).`, "info", 3000);
+                }
+                return true;
+            },
+
+            // ---- Motor 2: Web Serial / COM (ESC/POS raw) ----
+            async printViaWebSerial(ordenId, baudRate = 9600) {
+                if (!navigator.serial) {
+                    throw new Error("Web Serial no está disponible en este navegador. Use Chrome o Edge.");
+                }
+
+                const datos = await this.fetchOrdenData(ordenId);
+                const ports = await navigator.serial.getPorts();
+                if (!ports.length) {
+                    const err = new Error("No hay puerto serial emparejado. Empareje la impresora en Configuraciones.");
+                    err.name = "NoSerialPortError";
+                    throw err;
+                }
+
+                const port = ports[0];
+                if (!port.readable && !port.writable) {
+                    await port.open({ baudRate });
+                }
+
+                const writer = port.writable.getWriter();
                 try {
-                    const res = await fetch(`/api/ordenes/${ordenId}/datos-impresion/`);
-                    if (!res.ok) {
-                        console.warn(`No se pudieron obtener datos de impresión para orden #${ordenId}`);
-                        return false;
-                    }
-                    const json = await res.json();
-                    if (!json.success || !json.orden) return false;
+                    await writer.write(this.buildEscPosFromData(datos));
+                    await writer.ready;
+                } finally {
+                    writer.releaseLock();
+                }
 
-                    const device = await this.getDevice();
-                    if (!device) {
-                        // Si no hay WebUSB emparejado previamente en este navegador, fallback silencioso
-                        return false;
-                    }
+                if (window.showToast) {
+                    window.showToast(`Comanda #${ordenId} enviada por Web Serial.`, "info", 3000);
+                }
+                return true;
+            },
 
-                    await this.connect(device);
-                    const iface = device.configuration.interfaces[0];
-                    const outEndpoint = iface.alternate.endpoints.find(e => e.direction === 'out');
-                    if (!outEndpoint) return false;
+            // ---- Motor 3: Iframe invisible + window.print() silencioso ----
+            getOrCreateIframe() {
+                let iframe = document.getElementById("mainch-direct-print-iframe");
+                if (!iframe) {
+                    iframe = document.createElement("iframe");
+                    iframe.id = "mainch-direct-print-iframe";
+                    iframe.setAttribute("aria-hidden", "true");
+                    iframe.style.cssText = "position:fixed; top:-9999px; left:-9999px; width:0; height:0; border:0;";
+                    document.body.appendChild(iframe);
+                }
+                return iframe;
+            },
 
-                    const payload = this.buildEscPosFromData(json.orden);
-                    await device.transferOut(outEndpoint.endpointNumber, payload);
-                    
-                    if (window.showToast) {
-                        window.showToast(`Comanda #${ordenId} enviada a impresora térmica.`, "info", 3000);
+            printViaSilentIframe(ordenId, format = '58mm') {
+                return new Promise((resolve) => {
+                    const iframe = this.getOrCreateIframe();
+                    // Cache-buster para forzar recarga si se reimprime la misma orden.
+                    const url = `/pedidos/${ordenId}/ticket/?format=${format}&autoprint=1&_ts=${Date.now()}`;
+
+                    iframe.onload = () => {
+                        // El ticket trae autoprint=1, pero reforzamos la invocación por si el
+                        // navegador no ejecuta scripts dentro de iframes ocultos.
+                        setTimeout(() => {
+                            try {
+                                const win = iframe.contentWindow;
+                                if (win && !win.__mainchTicketPrinted) {
+                                    win.__mainchTicketPrinted = true;
+                                    win.focus();
+                                    win.print();
+                                }
+                            } catch (e) {
+                                console.warn("No se pudo invocar print() en el iframe:", e);
+                            }
+                            resolve(true);
+                        }, 450);
+                    };
+
+                    iframe.src = url;
+                });
+            },
+
+            // ---- Dispatcher con triple fallback ----
+            async printOrderDirectly(ordenId) {
+                if (!ordenId) return false;
+
+                const modo = (localStorage.getItem("mainch_impresion_modo") || "webusb").toLowerCase();
+                const formato = localStorage.getItem("mainch_ancho_papel") || "58mm";
+
+                const esAccesoDenegado = (err) => {
+                    if (!err) return false;
+                    return (
+                        err.name === "SecurityError" ||
+                        err.name === "Access denied" ||
+                        /access denied|permission|not allowed|securityerror/i.test(err.message || "")
+                    );
+                };
+
+                // Modo explícito: Web Serial
+                if (modo === "serial") {
+                    try {
+                        return await this.printViaWebSerial(ordenId);
+                    } catch (err) {
+                        console.error("Fallo Web Serial:", err);
+                        if (window.showToast) {
+                            window.showToast(`Web Serial falló (${err.message}). Usando ticket del sistema.`, "warning", 5000);
+                        }
+                        return await this.printViaSilentIframe(ordenId, formato);
                     }
-                    return true;
+                }
+
+                // Modo explícito: Impresora del sistema / iframe silencioso
+                if (modo === "spooler" || modo === "iframe") {
+                    return await this.printViaSilentIframe(ordenId, formato);
+                }
+
+                // Modo por defecto: WebUSB con fallback automático
+                try {
+                    return await this.printViaWebUSB(ordenId);
                 } catch (err) {
-                    console.error("Error imprimiendo comanda vía WebUSB:", err);
-                    return false;
+                    if (esAccesoDenegado(err)) {
+                        console.warn("WebUSB bloqueado por el driver del sistema (Access denied). Iniciando fallback...");
+                        if (window.showToast) {
+                            window.showToast("WebUSB bloqueado por el driver de Windows. Reintentando por Web Serial...", "warning", 5000);
+                        }
+                        try {
+                            return await this.printViaWebSerial(ordenId);
+                        } catch (serialErr) {
+                            console.warn("Fallback Web Serial también falló:", serialErr);
+                        }
+                        if (window.showToast) {
+                            window.showToast("Impresión silenciosa por ticket del sistema (iframe).", "warning", 5000);
+                        }
+                        return await this.printViaSilentIframe(ordenId, formato);
+                    }
+
+                    console.warn("WebUSB no disponible. Usando iframe silencioso:", err);
+                    return await this.printViaSilentIframe(ordenId, formato);
                 }
             }
         };

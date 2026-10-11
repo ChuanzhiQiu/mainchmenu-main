@@ -319,7 +319,8 @@
                     // Impresión inmediata por WebUSB si está habilitada
                     const autoImprimir = localStorage.getItem("mainch_auto_imprimir") !== "0";
                     if (autoImprimir && window.MainchDirectPrint && activeOrderId) {
-                        window.MainchDirectPrint.printOrderDirectly(activeOrderId);
+                        window.MainchDirectPrint.printOrderDirectly(activeOrderId)
+                            .catch(err => console.warn("Error en impresión directa:", err));
                     }
 
                     document.body.dispatchEvent(new Event('orderUpdated'));
