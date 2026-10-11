@@ -2096,11 +2096,11 @@ def sugerencias_compra_api_view(request):
 # LAYER 1: CEREMONIA DE ACTIVACIÓN Y DESVINCULACIÓN DE TERMINAL (M7)
 # =============================================================================
 
-@restaurante_session_required
+@admin_required
 def activar_terminal_view(request, slug=None):
     """
     Ceremonia de Activación de Terminal (Capa 1):
-    Disponible para cualquier sesión de restaurante (cajero o administrador).
+    Exclusivo para administradores (is_staff=True).
     Vincula el navegador/dispositivo actual al restaurante mediante la cookie firmada mainch_terminal_token.
     """
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -2145,7 +2145,7 @@ def activar_terminal_view(request, slug=None):
     })
 
 
-@restaurante_session_required
+@admin_required
 def desactivar_terminal_view(request, slug=None):
     """
     Desvincula la terminal actual del restaurante y elimina la cookie firmada.

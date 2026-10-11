@@ -133,13 +133,8 @@ class Layer1TerminalSecurityTests(TestCase):
         self.assertIsNone(payload)
 
     def test_layer1_pairing_and_unpairing_ceremony(self):
-        """Ceremonia de vinculación y desvinculación de terminal por sesión de restaurante."""
+        """Ceremonia de vinculación y desvinculación de terminal por administrador."""
         self.client.login(username="admin_term", password="password123")
-        # Establecer sesión operativa de restaurante (Nivel 1)
-        session = self.client.session
-        session["restaurante_id"] = self.restaurante_a.id
-        session["active_tenant_slug"] = self.restaurante_a.slug
-        session.save()
 
         # Vincular
         resp_act = self.client.post(
