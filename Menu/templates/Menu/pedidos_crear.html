@@ -800,21 +800,10 @@
                 body: JSON.stringify(payload),
             })
             .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data })))
-            .then(({ status, ok, data }) => {
-                confirmarBtn.disabled = false;
-                confirmarBtn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Confirmar y Enviar a Cocina</span>';
-                if (window.lucide) lucide.createIcons({ root: confirmarBtn });
-
+            .then(async ({ ok, data }) => {
                 if (ok && data.success) {
                     if (window.showToast) {
                         window.showToast(`Orden #${data.orden_id} creada exitosamente ($${formatMiles(data.total)}).`, "success");
-                    }
-
-                    // Auto-impresión inmediata por WebUSB (cero fricción para el cajero)
-                    const autoImprimir = localStorage.getItem("mainch_auto_imprimir") !== "0";
-                    if (autoImprimir && window.MainchDirectPrint && data.orden_id) {
-                        window.MainchDirectPrint.printOrderDirectly(data.orden_id)
-                            .catch(err => console.warn("Error en impresión directa:", err));
                     }
 
                     // Reset form & cart
@@ -826,7 +815,41 @@
 
                     // Notify KDS board if listening in parent / same page
                     document.body.dispatchEvent(new Event("orderUpdated"));
+
+                    // Bloquear doble envío mientras se imprime y redirige
+                    confirmarBtn.disabled = true;
+                    confirmarBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Enviando a Cocina...</span>';
+                    if (window.lucide) lucide.createIcons({ root: confirmarBtn });
+
+                    // Auto-impresión inmediata (WebUSB / Serial / iframe silencioso)
+                    const autoImprimir = localStorage.getItem("mainch_auto_imprimir") !== "0";
+                    if (autoImprimir && window.MainchDirectPrint && data.orden_id) {
+                        try {
+                            // Carrera: esperamos la impresión, pero nunca más de 800ms para
+                            // que el navegador no cancele la carga del iframe del ticket.
+                            await Promise.race([
+                                Promise.resolve(
+                                    window.MainchDirectPrint.printOrderDirectly(data.orden_id)
+                                ).catch(err => {
+                                    console.warn("Error en impresión directa:", err);
+                                    return false;
+                                }),
+                                new Promise(resolve => setTimeout(() => resolve("timeout"), 800)),
+                            ]);
+                        } catch (err) {
+                            console.warn("Error en impresión directa:", err);
+                        }
+                    }
+
+                    // Redirección automática al KDS (cocina) una vez impreso el ticket
+                    const kdsUrl = "{% if url_kds %}{{ url_kds }}{% else %}{% url 'Menu:inicio' %}{% endif %}";
+                    window.location.href = kdsUrl;
+                    return;
                 } else {
+                    confirmarBtn.disabled = false;
+                    confirmarBtn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Confirmar y Enviar a Cocina</span>';
+                    if (window.lucide) lucide.createIcons({ root: confirmarBtn });
+
                     const errorMsg = (data && data.message) ? data.message : "Error al procesar la orden.";
                     if (window.showToast) {
                         window.showToast(errorMsg, "error");
