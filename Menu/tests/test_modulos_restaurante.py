@@ -91,6 +91,35 @@ class ModulosBaseTestCase(TestCase):
         )
 
 
+class AdminRestauranteSuperuserGateTests(TestCase):
+    """El control de módulos por tenant es exclusivo del superusuario desarrollador."""
+
+    URL = "/admin/Menu/restaurante/"
+
+    def test_admin_staff_sin_superuser_recibe_403(self):
+        User.objects.create_user(
+            username="admin_staff",
+            password="password123",
+            is_staff=True,
+            is_superuser=False,
+        )
+        self.assertTrue(self.client.login(username="admin_staff", password="password123"))
+
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_superusuario_desarrollador_recibe_200(self):
+        User.objects.create_superuser(
+            username="dev_superuser",
+            password="password123",
+            email="dev@test.cl",
+        )
+        self.assertTrue(self.client.login(username="dev_superuser", password="password123"))
+
+        resp = self.client.get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+
 class AislamientoModulosTests(ModulosBaseTestCase):
     """Los flags son estrictamente por restaurante."""
 
