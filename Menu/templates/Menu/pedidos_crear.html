@@ -4,7 +4,9 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    {% if modulos.cajeros %}
     {% include "Menu/modal_cajero.html" %}
+    {% endif %}
 
     <!-- Top POS Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-200 mb-6 gap-3">
@@ -224,6 +226,7 @@
                         </div>
                     </div>
 
+                    {% if modulos.salones_mesas %}
                     <!-- Servicio en Salón: selector de Áreas y Mesas (opcional) -->
                     <div class="grid grid-cols-2 gap-2">
                         <div>
@@ -243,6 +246,7 @@
                             </select>
                         </div>
                     </div>
+                    {% endif %}
 
                     <!-- Descuento Monetario en Pesos CLP -->
                     <div>
@@ -405,6 +409,7 @@
     const API_BASE = "/r/{{ restaurante.slug }}/api/";
     const ES_ADMIN = {{ es_admin|yesno:"true,false" }};
     const TURNO_ABIERTO_INICIAL = {{ turno_abierto|yesno:"true,false" }};
+    const MODULO_SALONES_MESAS = {{ modulos.salones_mesas|yesno:"true,false" }};
 
     document.addEventListener("DOMContentLoaded", () => {
         // Carrito en memoria: { key: { tipo, id, nombre, valor, cantidad } }
@@ -446,6 +451,7 @@
         let mesasCache = [];
 
         async function cargarAreas() {
+            if (!MODULO_SALONES_MESAS || !selectArea) return;
             try {
                 const resp = await fetch(API_BASE + "areas/");
                 if (!resp.ok) return;
@@ -465,6 +471,7 @@
         }
 
         async function cargarMesas() {
+            if (!MODULO_SALONES_MESAS || !selectMesa) return;
             try {
                 const resp = await fetch(API_BASE + "mesas/");
                 if (!resp.ok) return;
@@ -476,6 +483,7 @@
         }
 
         function renderMesas() {
+            if (!selectArea || !selectMesa) return;
             const areaId = selectArea.value;
             selectMesa.innerHTML = '<option value="">Sin mesa</option>';
             mesasCache
@@ -488,9 +496,11 @@
                 });
         }
 
-        selectArea.addEventListener("change", renderMesas);
-        cargarAreas();
-        cargarMesas();
+        if (selectArea && selectMesa) {
+            selectArea.addEventListener("change", renderMesas);
+            cargarAreas();
+            cargarMesas();
+        }
 
         // 0-bis. Control de turno para creación de comandas (modo caja)
         function setTurnoBloqueado(bloqueado) {
@@ -775,7 +785,7 @@
                 cantidad: it.cantidad,
             }));
 
-            const mesaId = selectMesa.value || "";
+            const mesaId = (MODULO_SALONES_MESAS && selectMesa) ? (selectMesa.value || "") : "";
             const payload = {
                 cliente: cliente,
                 canal_venta: canalVentaSelect.value || "Local",

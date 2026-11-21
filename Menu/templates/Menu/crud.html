@@ -10,13 +10,15 @@
             <i data-lucide="chef-hat" class="w-4 h-4"></i>
             Carta y Cocina
         </a>
+        {% if modulos.salones_mesas %}
         <a href="{{ request.path }}?tab=mesas" class="{% if tab == 'mesas' %}bg-amber-500 text-slate-950{% else %}text-slate-600 hover:bg-slate-100{% endif %} px-4 py-2 rounded-xl text-sm font-bold transition inline-flex items-center gap-2 whitespace-nowrap">
             <i data-lucide="layout-grid" class="w-4 h-4"></i>
             Salones y Mesas
         </a>
+        {% endif %}
     </div>
 
-    {% if tab == 'mesas' %}
+    {% if modulos.salones_mesas and tab == 'mesas' %}
 
     <!-- Encabezado Salones y Mesas -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
@@ -246,18 +248,22 @@
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ plato.nombre }}</td>
                         <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|intdot }}</td>
                         <td class="py-3.5 px-6 space-y-1">
+                            {% if modulos.inventario %}
                             <button type="button" 
                                     class="btn-ver-receta inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition"
                                     data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}" data-valor="{{ plato.valor }}">
                                 <i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>
                                 <span>Receta / Insumos</span>
                             </button>
+                            {% endif %}
+                            {% if modulos.delivery %}
                             <button type="button" 
                                     class="btn-ver-price-tiers inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 transition"
                                     data-id="{{ plato.id }}" data-nombre="{{ plato.nombre }}">
                                 <i data-lucide="tag" class="w-3.5 h-3.5"></i>
                                 <span>Precios Delivery & SKUs</span>
                             </button>
+                            {% endif %}
                         </td>
                         <td class="py-3.5 px-6 text-right space-x-1">
                             <button class="btn-editar inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
@@ -338,6 +344,7 @@
     {% endif %}
 </div>
 
+{% if modulos.inventario %}
 <!-- ==================== MODAL GESTOR DE ESCANDALLO / RECETA ==================== -->
 <div id="modal-receta" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
@@ -429,6 +436,9 @@
     </div>
 </div>
 
+{% endif %}
+
+{% if modulos.delivery %}
 <!-- ==================== MODAL PRECIOS DELIVERY & SKUS (PRICE TIERS) ==================== -->
 <div id="modal-price-tiers" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
@@ -493,6 +503,8 @@
         </div>
     </div>
 </div>
+
+{% endif %}
 
 <!-- ==================== MODAL CREAR / EDITAR PLATO ==================== -->
 <div id="modal-plato" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
@@ -632,6 +644,7 @@
     </div>
 </div>
 
+{% if modulos.salones_mesas %}
 <!-- ==================== MODAL GESTOR DE SALÓN ==================== -->
 <div id="modal-salon" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
@@ -696,6 +709,8 @@
         </div>
     </div>
 </div>
+
+{% endif %}
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {

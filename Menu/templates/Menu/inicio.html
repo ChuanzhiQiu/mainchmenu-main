@@ -57,7 +57,7 @@
 
         <!-- Filtros Form -->
         <form method="GET" action="" class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 items-end">
+            <div class="grid grid-cols-1 sm:grid-cols-2 {% if modulos.delivery %}md:grid-cols-5{% else %}md:grid-cols-4{% endif %} gap-3 items-end">
                 <div>
                     <label for="estado" class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
                     <select name="estado" id="estado" class="w-full text-sm border-slate-300 rounded-lg shadow-sm">
@@ -68,6 +68,7 @@
                     </select>
                 </div>
 
+                {% if modulos.delivery %}
                 <div>
                     <label for="canal" class="block text-xs font-semibold text-slate-600 mb-1">Canal</label>
                     <select name="canal" id="canal" class="w-full text-sm border-slate-300 rounded-lg shadow-sm">
@@ -77,6 +78,7 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% endif %}
 
                 <div>
                     <label for="orden" class="block text-xs font-semibold text-slate-600 mb-1">Orden por Fecha</label>
@@ -112,7 +114,7 @@
                             <th class="px-4 py-3">Cliente</th>
                             <th class="px-4 py-3">Fecha</th>
                             <th class="px-4 py-3">Estado</th>
-                            <th class="px-4 py-3">Canal</th>
+                            {% if modulos.delivery %}<th class="px-4 py-3">Canal</th>{% endif %}
                             <th class="px-4 py-3">Total</th>
                             <th class="px-4 py-3 text-right">Comanda</th>
                         </tr>
@@ -131,7 +133,9 @@
                                         {{ pedido.estado }}
                                     </span>
                                 </td>
+                                {% if modulos.delivery %}
                                 <td class="px-4 py-3">{{ pedido.canal_venta }}</td>
+                                {% endif %}
                                 <td class="px-4 py-3 font-semibold text-slate-900">${{ pedido.monto_total|intdot }}</td>
                                 <td class="px-4 py-3 text-right">
                                     <a href="{% url 'Menu:ticket_orden' pedido.id %}" target="_blank" class="text-xs text-amber-600 hover:text-amber-800 font-bold">

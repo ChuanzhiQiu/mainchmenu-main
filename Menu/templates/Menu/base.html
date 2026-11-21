@@ -169,19 +169,23 @@
                     </a>
 
                     {% if user.is_authenticated and user.is_staff %}
+                    {% if modulos.inventario %}
                     <a href="{{ url_inventario }}" 
                        class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
                        title="Inventario y Alertas">
                         <i data-lucide="boxes" class="w-4 h-4 text-indigo-400"></i>
                         <span>Inventario</span>
                     </a>
+                    {% endif %}
 
+                    {% if modulos.cajeros %}
                     <a href="{{ url_cajeros }}" 
                        class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
                        title="Gestión de Cajeros">
                         <i data-lucide="users" class="w-4 h-4 text-rose-400"></i>
                         <span>Cajeros</span>
                     </a>
+                    {% endif %}
 
                     <a href="{{ url_crud }}" 
                        class="px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition inline-flex items-center gap-1.5"
