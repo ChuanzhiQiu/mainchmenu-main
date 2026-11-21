@@ -1,6 +1,60 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock
+from .models import (
+    Plato, Orden, Menu, OrdenItem, Insumo, RecetaItem, MovimientoStock, Restaurante
+)
+
+
+@admin.register(Restaurante)
+class RestauranteAdmin(admin.ModelAdmin):
+    """Administración de tenants y control de módulos opcionales (solo superusuario)."""
+
+    list_display = (
+        'id', 'nombre', 'slug', 'activo',
+        'modulo_inventario', 'modulo_salones_mesas', 'modulo_delivery', 'modulo_cajeros'
+    )
+    list_editable = (
+        'modulo_inventario', 'modulo_salones_mesas', 'modulo_delivery', 'modulo_cajeros'
+    )
+    search_fields = ('nombre', 'slug')
+    list_filter = ('activo',)
+    ordering = ('nombre',)
+    prepopulated_fields = {'slug': ('nombre',)}
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('nombre', 'slug', 'direccion', 'telefono', 'activo', 'api_key_delivery'),
+        }),
+        ('Módulos Activos (Control Desarrollador)', {
+            'fields': (
+                'modulo_inventario',
+                'modulo_salones_mesas',
+                'modulo_delivery',
+                'modulo_cajeros',
+            ),
+            'description': (
+                'Desactive un módulo para ocultar y bloquear toda su vertical en este '
+                'restaurante. Los datos existentes se conservan.'
+            ),
+        }),
+    )
+
+    def _es_superusuario(self, request):
+        return bool(request.user and request.user.is_superuser)
+
+    def has_module_permission(self, request):
+        return self._es_superusuario(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._es_superusuario(request)
+
+    def has_add_permission(self, request):
+        return self._es_superusuario(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._es_superusuario(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return self._es_superusuario(request)
 
 # Inline de Escandallo para PlatoAdmin (F07)
 class RecetaItemInline(admin.TabularInline):

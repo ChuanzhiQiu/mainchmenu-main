@@ -32,12 +32,51 @@ class Restaurante(models.Model):
     )
     creado_el = models.DateTimeField(auto_now_add=True)
 
+    # ------------------------------------------------------------------
+    # Flags de módulos opcionales por restaurante (control del desarrollador).
+    # Permiten desactivar verticales completas sin afectar al resto del POS.
+    # ------------------------------------------------------------------
+    modulo_inventario = models.BooleanField(
+        default=True,
+        verbose_name='Módulo Inventario, Recetas e IA'
+    )
+    modulo_salones_mesas = models.BooleanField(
+        default=True,
+        verbose_name='Módulo Salones y Mesas'
+    )
+    modulo_delivery = models.BooleanField(
+        default=True,
+        verbose_name='Módulo Delivery, Webhooks y Precios por Canal'
+    )
+    modulo_cajeros = models.BooleanField(
+        default=True,
+        verbose_name='Módulo Cajeros, PIN y Turnos'
+    )
+
     class Meta:
         verbose_name = "Restaurante"
         verbose_name_plural = "Restaurantes"
 
     def __str__(self):
         return self.nombre
+
+    def modulo_activo(self, nombre: str) -> bool:
+        """
+        Indica si un módulo opcional está habilitado para este restaurante.
+
+        Nombres válidos: 'inventario', 'salones_mesas', 'delivery', 'cajeros'.
+        Un nombre desconocido retorna False (fail-closed para el módulo pedido).
+        """
+        campos = {
+            'inventario': 'modulo_inventario',
+            'salones_mesas': 'modulo_salones_mesas',
+            'delivery': 'modulo_delivery',
+            'cajeros': 'modulo_cajeros',
+        }
+        campo = campos.get(str(nombre or '').strip().lower())
+        if campo is None:
+            return False
+        return bool(getattr(self, campo, True))
 
     def clean(self):
         super().clean()
@@ -91,13 +130,66 @@ class CredencialRestaurante(models.Model):
         return check_password(raw_password, self.password_hash)
 
 
+def _crear_restaurante_base(**extra):
+    """
+    Crea el restaurante 'Mainch' usando solo las columnas del esquema inicial.
+
+    Se usa INSERT explícito (vía ORM cuando el esquema está completo) porque esta
+    función puede ejecutarse durante migraciones antiguas que reconstruyen la tabla
+    `Menu_restaurante` antes de que existan columnas añadidas después.
+    """
+    from django.db import connection, transaction, DatabaseError
+
+    datos = {
+        "nombre": "Mainch",
+        "slug": "mainch",
+        "direccion": "Valparaíso, Chile",
+        "telefono": "+56 9 1234 5678",
+        "activo": True,
+        "api_key_delivery": uuid.uuid4().hex,
+        "creado_el": timezone.now(),
+    }
+    datos.update(extra)
+
+    try:
+        # Savepoint: si el esquema aún no tiene las columnas nuevas, el fallo no
+        # envenena la transacción de la migración en curso.
+        with transaction.atomic():
+            return Restaurante.objects.create(**datos).pk
+    except DatabaseError:
+        # Esquema en migración: insertar únicamente las columnas existentes.
+        with connection.cursor() as cursor:
+            columnas_tabla = {
+                col.name
+                for col in connection.introspection.get_table_description(
+                    cursor, Restaurante._meta.db_table
+                )
+            }
+            datos = {k: v for k, v in datos.items() if k in columnas_tabla}
+            columnas = ", ".join(f'"{c}"' for c in datos)
+            marcadores = ", ".join(["%s"] * len(datos))
+            cursor.execute(
+                f'INSERT INTO "{Restaurante._meta.db_table}" ({columnas}) VALUES ({marcadores})',
+                list(datos.values()),
+            )
+            return cursor.lastrowid
+
+
 def get_default_restaurante():
-    """Retorna o crea el restaurante por defecto 'Mainch'."""
-    restaurante, _ = Restaurante.objects.get_or_create(
-        slug="mainch",
-        defaults={"nombre": "Mainch", "direccion": "Valparaíso, Chile"}
+    """Retorna o crea el restaurante por defecto 'Mainch'.
+
+    La búsqueda usa `values_list('pk')` en lugar de materializar la instancia: esta
+    función se usa como `default=` de claves foráneas y Django la evalúa durante
+    migraciones antiguas (remake de tablas en SQLite), donde columnas añadidas
+    posteriormente aún no existen en la base de datos.
+    """
+    restaurante_id = (
+        Restaurante.objects.filter(slug="mainch").values_list("pk", flat=True).first()
     )
-    return restaurante.pk
+    if restaurante_id is not None:
+        return restaurante_id
+
+    return _crear_restaurante_base()
 
 
 # Modelo para representar cada plato de manera individual

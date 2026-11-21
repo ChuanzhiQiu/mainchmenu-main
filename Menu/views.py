@@ -24,6 +24,7 @@ from django.db.models.functions import TruncDay, Coalesce
 from collections import Counter
 from Menu.services.inventory_service import descontar_stock_orden
 from Menu.services.delivery_service import procesar_orden_delivery_externa
+from Menu.module_gates import module_required
 from src.ai_forecast.config import detectar_configuracion_ia
 
 from django.contrib.auth import authenticate, login, logout
@@ -452,31 +453,34 @@ def confirmar_orden(request, id):
         orden.save(update_fields=["estado", "tipo_pago", "descuento", "monto_total", "fecha_completada"])
 
         # 7. Ejecutar hook de deducción de stock atómica (F10 / F11)
+        #    Solo si el restaurante tiene habilitado el módulo de inventario.
         alertas_stock = []
         movimientos_count = 0
         error_deduccion = None
-        try:
-            res_deduccion = descontar_stock_orden(orden.id, restaurante_esperado=restaurante)
+        inventario_habilitado = bool(getattr(restaurante, 'modulo_inventario', True))
+        if inventario_habilitado:
+            try:
+                res_deduccion = descontar_stock_orden(orden.id, restaurante_esperado=restaurante)
 
-            if res_deduccion and res_deduccion.get("success"):
-                alertas_stock = res_deduccion.get("alertas_stock_minimo", [])
-                movimientos_count = res_deduccion.get("movimientos", 0)
-                orden.refresh_from_db(fields=["stock_descontado"])
-            else:
-                error_deduccion = (
-                    res_deduccion.get("error") if res_deduccion
-                    else "Error desconocido en el servicio de deducción de inventario."
+                if res_deduccion and res_deduccion.get("success"):
+                    alertas_stock = res_deduccion.get("alertas_stock_minimo", [])
+                    movimientos_count = res_deduccion.get("movimientos", 0)
+                    orden.refresh_from_db(fields=["stock_descontado"])
+                else:
+                    error_deduccion = (
+                        res_deduccion.get("error") if res_deduccion
+                        else "Error desconocido en el servicio de deducción de inventario."
+                    )
+                    logger.error(
+                        "Fallo en la deducción de inventario para orden #%s: %s",
+                        orden.id, error_deduccion
+                    )
+            except Exception as e:
+                error_deduccion = str(e)
+                logger.exception(
+                    "Excepción no controlada durante la deducción de stock para orden #%s: %s",
+                    orden.id, e
                 )
-                logger.error(
-                    "Fallo en la deducción de inventario para orden #%s: %s",
-                    orden.id, error_deduccion
-                )
-        except Exception as e:
-            error_deduccion = str(e)
-            logger.exception(
-                "Excepción no controlada durante la deducción de stock para orden #%s: %s",
-                orden.id, e
-            )
 
         # 8. Propagación de alertas y mensajes a Django Messages Framework (para vistas HTML/KDS)
         if error_deduccion:
@@ -578,8 +582,13 @@ def crear_orden(request):
             or (hasattr(request, "headers") and bool(request.headers.get("HX-Request")))
         )
 
-        # Verificación de bloqueo de pantalla / terminal (Capa 2 M7)
-        if hasattr(request, "session") and request.session.get('cajero_bloqueado', False):
+        modulo_cajeros_habilitado = bool(getattr(restaurante, 'modulo_cajeros', True))
+        modulo_delivery_habilitado = bool(getattr(restaurante, 'modulo_delivery', True))
+        modulo_salones_habilitado = bool(getattr(restaurante, 'modulo_salones_mesas', True))
+
+        # Verificación de bloqueo de pantalla / terminal (Capa 2 M7).
+        # En modo caja simple (módulo de cajeros apagado) no aplica el bloqueo por PIN.
+        if modulo_cajeros_habilitado and hasattr(request, "session") and request.session.get('cajero_bloqueado', False):
             msg = "Terminal bloqueada. Ingrese su PIN de cajero para desbloquear."
             if is_json or is_ajax:
                 return JsonResponse({"success": False, "error": msg, "bloqueado": True}, status=423)
@@ -616,6 +625,15 @@ def crear_orden(request):
         # Restricción RBAC: Canales de delivery exclusivos para Administrador
         canales_delivery = [Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY]
         es_admin = request.user.is_authenticated and request.user.is_staff
+
+        # Módulo Delivery deshabilitado: ningún canal de delivery es aceptado.
+        if canal_venta in canales_delivery and not modulo_delivery_habilitado:
+            msg = "El módulo de delivery está deshabilitado para este restaurante."
+            if is_json or is_ajax:
+                return JsonResponse({"success": False, "error": msg, "modulo": "delivery"}, status=403)
+            messages.error(request, msg)
+            return redirect("Menu:crear_orden")
+
         if canal_venta in canales_delivery and not es_admin:
             msg = "El registro manual de pedidos por Delivery (Uber Eats, Pedidos Ya) está restringido a administradores."
             if is_json or is_ajax:
@@ -633,10 +651,12 @@ def crear_orden(request):
 
         cliente = str(cliente).strip()
 
-        # 2-bis. Parse opcional de mesa y tipo de servicio (salón/mesas)
+        # 2-bis. Parse opcional de mesa y tipo de servicio (salón/mesas).
+        # Si el módulo de salones/mesas está apagado, se ignora `mesa_id` y la orden
+        # se registra como venta de mostrador.
         mesa = None
         raw_mesa_id = data.get("mesa_id")
-        if raw_mesa_id not in (None, "", "null", "None"):
+        if modulo_salones_habilitado and raw_mesa_id not in (None, "", "null", "None"):
             try:
                 mesa = Mesa.all_objects.get(id=int(raw_mesa_id), restaurante=restaurante)
             except (Mesa.DoesNotExist, ValueError, TypeError):
@@ -646,6 +666,8 @@ def crear_orden(request):
                 messages.error(request, msg)
                 return redirect("Menu:crear_orden")
         tipo_servicio = str(data.get("tipo_servicio") or ("salon" if mesa else "mostrador")).strip() or "mostrador"
+        if not modulo_salones_habilitado and tipo_servicio == "salon":
+            tipo_servicio = "mostrador"
 
         # 3. Validar descuento (no negativo, numérico finito)
         raw_descuento = data.get("descuento")
@@ -849,7 +871,11 @@ def crear_orden(request):
             # cuya orden se audita como emitida directamente por él.
             emitida_por_admin = False
             admin_emisor = None
-            if not turno:
+            if not turno and not modulo_cajeros_habilitado:
+                # Modo caja simple: sin módulo de cajeros no se exige turno ni cajero.
+                cajero = None
+                turno = None
+            elif not turno:
                 if es_admin:
                     emitida_por_admin = True
                     admin_emisor = request.user
@@ -938,9 +964,13 @@ def crear_orden(request):
     ).exists()
     # El usuario de caja NO puede registrar pedidos por delivery
     if es_admin:
-        canales_ventas = Orden.CANAL_CHOICES
+        canales_ventas = list(Orden.CANAL_CHOICES)
     else:
         canales_ventas = [c for c in Orden.CANAL_CHOICES if c[0] in [Orden.CANAL_LOCAL, Orden.CANAL_WHATSAPP]]
+    # Módulo de delivery apagado: los canales de plataformas no se ofrecen.
+    if not bool(getattr(restaurante, 'modulo_delivery', True)):
+        canales_delivery_codes = {Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY}
+        canales_ventas = [c for c in canales_ventas if c[0] not in canales_delivery_codes]
 
     tipos_pago = Orden.PAGO_CHOICES
     return render(request, "Menu/pedidos_crear.html", {
@@ -958,6 +988,7 @@ def crear_orden(request):
 # -------------------- GESTIÓN DE RECETAS / ESCANDALLO (DUEÑO) --------------------
 
 @admin_required
+@module_required('inventario')
 def obtener_receta_plato(request, plato_id):
     """Devuelve los insumos asociados al plato (escandallo), su costo unitario y subtotal."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -1005,6 +1036,7 @@ def obtener_receta_plato(request, plato_id):
 
 
 @admin_required
+@module_required('inventario')
 def guardar_ingrediente_receta(request, plato_id):
     """Crea o actualiza la cantidad de un insumo dentro de la receta de un plato."""
     if request.method != "POST":
@@ -1045,6 +1077,7 @@ def guardar_ingrediente_receta(request, plato_id):
 
 
 @admin_required
+@module_required('inventario')
 def eliminar_ingrediente_receta(request, item_id):
     """Elimina un insumo del escandallo / receta de un plato."""
     if request.method != "POST":
@@ -1061,6 +1094,7 @@ def eliminar_ingrediente_receta(request, item_id):
 # -------------------- PRICE TIERS Y SKU MAPPING (DUEÑO / DELIVERY) --------------------
 
 @admin_required
+@module_required('delivery', json_response=True)
 def obtener_price_tiers_plato(request, plato_id):
     """Devuelve los precios configurados y SKUs externos por canal para un plato."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -1092,6 +1126,7 @@ def obtener_price_tiers_plato(request, plato_id):
 
 
 @admin_required
+@module_required('delivery', json_response=True)
 def guardar_price_tier_plato(request, plato_id):
     """Guarda o actualiza el precio y SKU externo de un plato para un canal específico."""
     if request.method != "POST":
@@ -1160,6 +1195,13 @@ def delivery_webhook_api(request, plataforma):
     if not restaurante:
         restaurante = get_current_restaurante(request)
 
+    # Módulo Delivery deshabilitado para el tenant -> rechazar el webhook.
+    if not bool(getattr(restaurante, 'modulo_delivery', True)):
+        return JsonResponse({
+            'error': 'Módulo de delivery deshabilitado para este restaurante.',
+            'modulo': 'delivery'
+        }, status=403)
+
     exito, orden, mensaje, repetido = procesar_orden_delivery_externa(
         restaurante=restaurante,
         canal=plataforma,
@@ -1186,12 +1228,27 @@ def crud(request):
     platos = Plato.objects.filter(restaurante=restaurante).order_by('id')
     menus = Menu.objects.filter(restaurante=restaurante).order_by('id')
     categorias = Categoria.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
-    insumos = Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
-    areas = Area.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
-    mesas = Mesa.objects.filter(restaurante=restaurante).select_related('area').order_by(
-        'area__orden', 'area__nombre', 'numero'
+
+    inventario_habilitado = bool(getattr(restaurante, 'modulo_inventario', True))
+    insumos = (
+        Insumo.objects.filter(restaurante=restaurante, activo=True).order_by('nombre')
+        if inventario_habilitado else Insumo.objects.none()
     )
+
+    salones_habilitado = bool(getattr(restaurante, 'modulo_salones_mesas', True))
+    if salones_habilitado:
+        areas = Area.objects.filter(restaurante=restaurante).order_by('orden', 'nombre')
+        mesas = Mesa.objects.filter(restaurante=restaurante).select_related('area').order_by(
+            'area__orden', 'area__nombre', 'numero'
+        )
+    else:
+        areas = Area.objects.none()
+        mesas = Mesa.objects.none()
+
     tab = request.GET.get('tab', 'carta')
+    if not salones_habilitado and tab == 'mesas':
+        tab = 'carta'
+
     return render(request, "Menu/crud.html", {
         "platos": platos, 
         "menus": menus,
@@ -1727,6 +1784,7 @@ ticket_comanda = ticket_orden
 # -------------------- INVENTARIO Y ALERTAS (F18) ----------------------------
 
 @admin_required
+@module_required('inventario')
 def inventario_view(request):
     """
     Panel de Control de Inventario y Alertas (F18):
@@ -1805,6 +1863,7 @@ def inventario_view(request):
 
 
 @admin_required
+@module_required('inventario')
 def ajustar_stock_view(request):
     """
     Endpoint transaccional para procesar ajustes manuales de stock (F18):
@@ -1925,6 +1984,7 @@ def ajustar_stock_view(request):
 
 
 @admin_required
+@module_required('inventario')
 def guardar_insumo(request):
     """Crea o edita una materia prima (Insumo) del inventario."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -1979,6 +2039,7 @@ def guardar_insumo(request):
 # =============================================================================
 
 @admin_required
+@module_required('inventario')
 def sugerencias_compra_api_view(request):
     """
     Endpoint HTTP REST / JSON (F23) para generación de órdenes de compra inteligentes:
@@ -2171,6 +2232,7 @@ def desactivar_terminal_view(request, slug=None):
 # =============================================================================
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_cajeros_disponibles(request, slug=None):
     """Retorna la lista de cajeros activos para el restaurante en contexto."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -2189,6 +2251,7 @@ def api_cajeros_disponibles(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_cajero_desbloquear(request, slug=None):
     """Valida el PIN de 4 dígitos de un cajero y desbloquea la terminal."""
     if request.method != "POST":
@@ -2218,6 +2281,7 @@ def api_cajero_desbloquear(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_cajero_bloquear(request, slug=None):
     """Bloquea inmediatamente la pantalla / sesión de la terminal."""
     if request.method != "POST":
@@ -2229,6 +2293,7 @@ def api_cajero_bloquear(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_cajero_estado(request, slug=None):
     """Retorna el estado de bloqueo y la información del cajero/turno actual en sesión."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
@@ -2255,6 +2320,7 @@ def api_cajero_estado(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_cajero_salir(request, slug=None):
     """
     Salida controlada del cajero (Nivel 1):
@@ -2299,6 +2365,7 @@ def api_cajero_salir(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_turno_abrir(request, slug=None):
     """Abre un nuevo turno de caja con fondo inicial."""
     if request.method != "POST":
@@ -2375,6 +2442,7 @@ def api_turno_abrir(request, slug=None):
 
 
 @restaurante_session_required
+@module_required('cajeros', json_response=True)
 def api_turno_cerrar(request, slug=None):
     """Cierra el turno de caja activo, calculando ventas en efectivo y diferencia de arqueo."""
     if request.method != "POST":
@@ -2448,6 +2516,7 @@ def api_turno_cerrar(request, slug=None):
 
 
 @admin_required
+@module_required('cajeros', json_response=True)
 def api_turno_forzar_cierre(request, slug=None):
     """Supervisor o administrador fuerza el cierre de un turno zombie o no cerrado."""
     if request.method != "POST":
@@ -2510,6 +2579,7 @@ def api_turno_forzar_cierre(request, slug=None):
 
 
 @admin_required
+@module_required('cajeros', json_response=True)
 def api_supervisor_desbloquear_cajero(request, slug=None):
     """Supervisor o administrador desbloquea inmediatamente un cajero con intentos fallidos agotados."""
     if request.method != "POST":
@@ -2567,6 +2637,7 @@ def _parse_json_body(request):
 
 
 @admin_required
+@module_required('cajeros')
 def cajeros_admin_view(request):
     """Vista administrativa para gestionar el equipo de cajeros del restaurante activo.
 
@@ -2710,6 +2781,7 @@ def cajeros_admin_view(request):
 
 
 @admin_required
+@module_required('cajeros', json_response=True)
 def api_cajero_crear(request):
     """Crea un nuevo perfil de cajero (nombre, código, PIN hasheado y estado)."""
     if request.method != "POST":
@@ -2760,6 +2832,7 @@ def api_cajero_crear(request):
 
 
 @admin_required
+@module_required('cajeros', json_response=True)
 def api_cajero_toggle_activo(request):
     """Bloquea/desactiva o reactiva un cajero del restaurante activo (nunca cross-tenant)."""
     if request.method != "POST":
@@ -2833,6 +2906,7 @@ def _mesa_to_dict(mesa):
 
 
 @admin_required
+@module_required('salones_mesas', json_response=True)
 def api_salon_guardar(request):
     """Crea o actualiza un salón/sector del restaurante activo."""
     if request.method != "POST":
@@ -2875,6 +2949,7 @@ def api_salon_guardar(request):
 
 
 @admin_required
+@module_required('salones_mesas', json_response=True)
 def api_salon_toggle_activo(request):
     """Activa o desactiva un salón del restaurante activo (nunca DELETE físico)."""
     if request.method != "POST":
@@ -2906,6 +2981,7 @@ def api_salon_toggle_activo(request):
 
 
 @admin_required
+@module_required('salones_mesas', json_response=True)
 def api_mesa_guardar(request):
     """Crea o actualiza una mesa del restaurante activo, con validación multi-tenant y código único."""
     if request.method != "POST":
@@ -2977,6 +3053,7 @@ def api_mesa_guardar(request):
 
 
 @admin_required
+@module_required('salones_mesas', json_response=True)
 def api_mesa_toggle_activo(request):
     """Activa o desactiva una mesa del restaurante activo (nunca DELETE físico)."""
     if request.method != "POST":

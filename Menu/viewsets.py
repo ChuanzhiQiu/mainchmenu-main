@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
 
 from Menu.models import Area, Cajero, Categoria, Mesa, Orden, TurnoCaja
+from Menu.module_gates import ModuloSalonesMesasPermission
 from Menu.serializers import (
     AreaSerializer,
     CategoriaSerializer,
@@ -45,6 +46,7 @@ class _TenantModelViewSet(viewsets.ModelViewSet):
 
 
 class AreaViewSet(_TenantModelViewSet):
+    permission_classes = [ModuloSalonesMesasPermission]
     serializer_class = AreaSerializer
 
 
@@ -53,6 +55,7 @@ class CategoriaViewSet(_TenantModelViewSet):
 
 
 class MesaViewSet(_TenantModelViewSet):
+    permission_classes = [ModuloSalonesMesasPermission]
     serializer_class = MesaSerializer
 
 

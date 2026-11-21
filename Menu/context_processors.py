@@ -22,6 +22,16 @@ def _build_tenant_urls(slug):
     }
 
 
+def _build_modulos(tenant):
+    """Flags de módulos opcionales del tenant (True si no hay tenant en contexto)."""
+    return {
+        "inventario": bool(getattr(tenant, "modulo_inventario", True)),
+        "salones_mesas": bool(getattr(tenant, "modulo_salones_mesas", True)),
+        "delivery": bool(getattr(tenant, "modulo_delivery", True)),
+        "cajeros": bool(getattr(tenant, "modulo_cajeros", True)),
+    }
+
+
 def tenant_navigation(request):
     """
     Provides canonical tenant URLs when inside a tenant context (/r/<slug>/...),
@@ -29,16 +39,21 @@ def tenant_navigation(request):
 
     El contexto solo expone `current_tenant` (restaurante autenticado); nunca
     una lista conmutable de restaurantes.
+
+    También expone `modulos`: mapa de flags de módulos opcionales del tenant
+    activo (ausente => habilitado) para que los templates oculten navegación.
     """
     tenant = getattr(request, "restaurante", None)
+    modulos = _build_modulos(tenant)
 
     if tenant and getattr(tenant, "slug", None):
-        ctx = {"current_tenant": tenant}
+        ctx = {"current_tenant": tenant, "modulos": modulos}
         ctx.update(_build_tenant_urls(tenant.slug))
         return ctx
 
     return {
         "current_tenant": None,
+        "modulos": modulos,
         "url_pos": reverse("Menu:pedidos_crear"),
         "url_kds": reverse("Menu:inicio"),
         "url_inventario": reverse("Menu:inventario"),

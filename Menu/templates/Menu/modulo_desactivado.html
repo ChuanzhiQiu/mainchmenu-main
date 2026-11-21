@@ -1,0 +1,36 @@
+{% extends 'Menu/base.html' %}
+
+{% block content %}
+<div class="container">
+    <div class="max-w-2xl mx-auto mt-10 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center gap-3 bg-amber-50">
+            <i data-lucide="lock" class="w-6 h-6 text-amber-600"></i>
+            <h1 class="text-lg font-bold text-slate-900">Módulo no disponible</h1>
+        </div>
+
+        <div class="px-6 py-6 space-y-4">
+            <p class="text-slate-700">
+                El módulo <span class="font-semibold text-slate-900">{{ modulo_label }}</span>
+                no está habilitado para este restaurante.
+            </p>
+            <p class="text-sm text-slate-500">
+                Si necesita utilizarlo, solicite al administrador de la plataforma que lo active
+                en la configuración del restaurante.
+            </p>
+
+            <div class="flex flex-wrap gap-3 pt-2">
+                <a href="{{ url_pos|default:'/' }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold transition">
+                    <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                    <span>Ir al POS</span>
+                </a>
+                <a href="{{ url_kds|default:'/' }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold transition">
+                    <i data-lucide="monitor" class="w-4 h-4"></i>
+                    <span>Ir a Cocina (KDS)</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
