@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+import re
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -75,6 +76,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -129,16 +131,32 @@ if DATABASE_URL:
         ) from exc
 
     is_sqlite = DATABASE_URL.startswith('sqlite')
+    is_vercel = bool(os.environ.get('VERCEL'))
+
+    # Vercel functions are frozen between invocations: long-lived connections
+    # leak server-side resources, so keep them short-lived there. On a VPS a
+    # persistent pool is a large win. Both remain overridable via env.
+    default_conn_max_age = '0' if is_vercel else '600'
+    conn_max_age = int(os.environ.get('DB_CONN_MAX_AGE') or default_conn_max_age)
+
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
-            conn_max_age=int(os.environ.get('DB_CONN_MAX_AGE') or '600'),
+            conn_max_age=conn_max_age,
             conn_health_checks=True,
             ssl_require=not is_sqlite,
         )
     }
     if is_sqlite:
         DATABASES['default'].setdefault('OPTIONS', {})['timeout'] = 20
+    elif (
+        os.environ.get('DB_DISABLE_SERVER_SIDE_CURSORS', '').lower() in ('1', 'true')
+        or ':6543/' in DATABASE_URL
+        or ':6543?' in DATABASE_URL
+    ):
+        # PgBouncer / Supabase transaction pooler (port 6543) does not keep
+        # named server-side cursors alive across statements.
+        DATABASES['default']['DISABLE_SERVER_SIDE_CURSORS'] = True
 else:
     # Transparent offline fallback to local SQLite
     DATABASES = {
@@ -202,6 +220,22 @@ STORAGES = {
 # Permitir a WhiteNoise servir estáticos de django.contrib.admin en Vercel sin collectstatic
 WHITENOISE_USE_FINDERS = True
 
+# Cachear de forma inmutable (1 año) los assets versionados en su nombre.
+# Un asset con hash/versión nunca cambia de contenido, así que el navegador
+# jamás necesita revalidarlo.
+WHITENOISE_MAX_AGE = 31536000
+_IMMUTABLE_STATIC_RE = re.compile(
+    r'(\.v\d+\.min\.(css|js)$|-\d+\.\d+\.\d+(\.umd)?\.min\.(css|js)$|\.[0-9a-f]{12}\.)'
+)
+
+
+def _is_immutable_static_file(path, url):
+    """WhiteNoise hook: long-cache only assets whose name carries a version."""
+    return bool(_IMMUTABLE_STATIC_RE.search(url or path or ''))
+
+
+WHITENOISE_IMMUTABLE_FILE_TEST = _is_immutable_static_file
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
@@ -218,13 +252,47 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
+    # The browsable API is a developer convenience only; never ship it in prod.
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
+    ] if DEBUG else [
+        'rest_framework.renderers.JSONRenderer',
     ],
 }
 
+# ==============================================================================
+# Cache and sessions
+# ==============================================================================
+# Redis is optional: VPS deployments can share sessions/cache across workers,
+# while Vercel serverless instances fall back to process-local memory and the
+# database for sessions (each lambda has its own LocMem cache).
+REDIS_URL = os.environ.get('REDIS_URL')
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'mainchapp-local',
+            'OPTIONS': {'MAX_ENTRIES': 1000},
+        }
+    }
+    SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+
 DEFAULT_CHARSET = 'utf-8'
 
-# Hardware isolation feature flag (disabled in cloud environments by default)
-PRINTER_ENABLED = os.environ.get('PRINTER_ENABLED', 'True').lower() in ('true', '1')
+# Hardware isolation feature flag. Local development and tests keep the print
+# agent enabled; cloud/serverless deployments have no local printer, so they
+# default to disabled unless explicitly overridden.
+_printer_default = 'False' if (os.environ.get('VERCEL') or DATABASE_URL) else 'True'
+PRINTER_ENABLED = os.environ.get(
+    'PRINTER_ENABLED', _printer_default
+).lower() in ('true', '1')

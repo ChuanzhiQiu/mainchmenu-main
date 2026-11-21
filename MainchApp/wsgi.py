@@ -17,8 +17,13 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'MainchApp.settings')
 
 application = get_wsgi_application()
 
-# Auto-migrate on cloud serverless startup (Supabase / Postgres)
-if os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL'):
+# Optional auto-migrate on boot (Supabase / Postgres).
+# Disabled by default: on Vercel every cold start would run migrate, wasting
+# the invocation budget and racing concurrent instances. Apply migrations once
+# per release instead (`manage.py migrate` in the build step or a Procfile
+# release command) and opt in here only when the platform has no release hook.
+_auto_migrate = os.environ.get('AUTO_MIGRATE_ON_BOOT', '').lower() in ('1', 'true')
+if _auto_migrate and (os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL')):
     try:
         from django.core.management import call_command
         logger.info("Executing pending migrations against cloud database...")
