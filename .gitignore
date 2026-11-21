@@ -29,6 +29,8 @@ desktop.ini
 # Ignorar bases de datos locales y artefactos temporales
 *.sqlite3
 *.sqlite3.bak
+*.sqlite3-wal
+*.sqlite3-shm
 *.diff
 
 
