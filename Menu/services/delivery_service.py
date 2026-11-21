@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, Tuple, Optional
 from decimal import Decimal
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from Menu.models import Orden, OrdenItem, Plato, PlatoPrecioCanal, Restaurante
 
@@ -89,33 +90,89 @@ def procesar_orden_delivery_externa(
 
             total_calculado = Decimal('0.00')
 
+            # 1. Normalizar payload de ítems (sin tocar aún la BD por ítem).
+            items_normalizados = []
             for it in items_raw:
-                sku_externo = str(it.get("sku") or it.get("external_id") or it.get("id") or "").strip()
-                nombre_item = str(it.get("nombre") or it.get("title") or it.get("name") or "").strip()
-                cantidad = int(it.get("cantidad") or it.get("quantity") or 1)
-                precio_unitario_payload = it.get("precio_unitario") or it.get("price")
+                items_normalizados.append({
+                    "sku": str(it.get("sku") or it.get("external_id") or it.get("id") or "").strip(),
+                    "nombre": str(it.get("nombre") or it.get("title") or it.get("name") or "").strip(),
+                    "cantidad": int(it.get("cantidad") or it.get("quantity") or 1),
+                    "precio_payload": it.get("precio_unitario") or it.get("price"),
+                })
 
-                # SKU Mapping:
-                # 1. Buscar en PlatoPrecioCanal por sku_externo y canal
-                plato = None
-                precio_tier_obj = PlatoPrecioCanal.objects.filter(
-                    plato__restaurante=restaurante,
+            skus = {i["sku"] for i in items_normalizados if i["sku"]}
+
+            # 2. Resolución en bloque del SKU Mapping (Price Tier por canal).
+            tiers_por_sku = {}
+            if skus:
+                for tier in (
+                    PlatoPrecioCanal.objects.filter(
+                        plato__restaurante=restaurante,
+                        canal=canal_db,
+                        sku_externo__in=skus,
+                    ).select_related('plato').order_by('id')
+                ):
+                    tiers_por_sku.setdefault(tier.sku_externo, tier)
+
+            # 3. Fallback en bloque por ID de plato o por nombre exacto.
+            ids_fallback = {
+                int(i["sku"]) for i in items_normalizados
+                if i["sku"].isdigit() and i["sku"] not in tiers_por_sku
+            }
+            platos_por_id = {
+                p.id: p for p in Plato.objects.filter(restaurante=restaurante, id__in=ids_fallback)
+            }
+
+            nombres_pendientes = {
+                i["nombre"] for i in items_normalizados
+                if i["nombre"] and i["sku"] not in tiers_por_sku and not (
+                    i["sku"].isdigit() and int(i["sku"]) in platos_por_id
+                )
+            }
+            platos_por_nombre = {}
+            if nombres_pendientes:
+                filtro_nombres = Q()
+                for nombre in nombres_pendientes:
+                    filtro_nombres |= Q(nombre__iexact=nombre)
+                for plato in Plato.objects.filter(filtro_nombres, restaurante=restaurante):
+                    platos_por_nombre.setdefault(plato.nombre.lower(), plato)
+
+            # 4. Price tiers de los platos resueltos por fallback (una sola consulta).
+            platos_resueltos = list(platos_por_id.values()) + list(platos_por_nombre.values())
+            plato_ids_resueltos = {p.id for p in platos_resueltos}
+            tiers_por_plato = {}
+            if plato_ids_resueltos:
+                for tier in PlatoPrecioCanal.objects.filter(
+                    restaurante=restaurante,
                     canal=canal_db,
-                    sku_externo=sku_externo
-                ).select_related('plato').first()
+                    disponible=True,
+                    plato_id__in=plato_ids_resueltos,
+                ).order_by('id'):
+                    tiers_por_plato.setdefault(tier.plato_id, tier)
 
-                if precio_tier_obj:
-                    plato = precio_tier_obj.plato
-                    precio_aplicado = precio_tier_obj.precio
-                else:
-                    # 2. Fallback por ID de plato o por Nombre exacto
+            orden_items = []
+            for item in items_normalizados:
+                sku_externo = item["sku"]
+                nombre_item = item["nombre"]
+                cantidad = item["cantidad"]
+                precio_unitario_payload = item["precio_payload"]
+
+                tier = tiers_por_sku.get(sku_externo) if sku_externo else None
+                plato = tier.plato if tier else None
+                precio_aplicado = tier.precio if tier else None
+
+                if plato is None:
                     if sku_externo.isdigit():
-                        plato = Plato.objects.filter(restaurante=restaurante, id=int(sku_externo)).first()
-                    if not plato and nombre_item:
-                        plato = Plato.objects.filter(restaurante=restaurante, nombre__iexact=nombre_item).first()
+                        plato = platos_por_id.get(int(sku_externo))
+                    if plato is None and nombre_item:
+                        plato = platos_por_nombre.get(nombre_item.lower())
 
-                    if plato:
-                        precio_aplicado = Decimal(str(plato.get_precio_para_canal(canal_db)))
+                    if plato is not None:
+                        precio_tier = tiers_por_plato.get(plato.id)
+                        if precio_tier is not None and precio_tier.precio > 0:
+                            precio_aplicado = precio_tier.precio
+                        else:
+                            precio_aplicado = Decimal(str(plato.valor))
                     else:
                         # Si no existe en catálogo, usar precio que viene en el payload
                         precio_aplicado = Decimal(str(precio_unitario_payload or 0))
@@ -124,18 +181,22 @@ def procesar_orden_delivery_externa(
                 if precio_unitario_payload is not None and (not plato or precio_aplicado == 0):
                     precio_aplicado = Decimal(str(precio_unitario_payload))
 
-                OrdenItem.objects.create(
+                orden_items.append(OrdenItem(
+                    restaurante=restaurante,
                     orden=orden,
                     plato=plato,
                     cantidad=cantidad,
-                    precio_unitario=precio_aplicado
-                )
+                    precio_unitario=precio_aplicado,
+                ))
                 total_calculado += (precio_aplicado * cantidad)
+
+            OrdenItem.objects.bulk_create(orden_items)
 
             orden.monto_total = max(
                 (total_calculado - orden.descuento).quantize(Decimal('0.01')),
                 Decimal('0.00')
             )
+            orden._skip_total_recalc = True
             orden.save(update_fields=["monto_total"])
 
             logger.info("Orden de delivery #%s (%s) creada exitosamente por API. ExtID: %s", orden.id, canal_db, order_id_ext)

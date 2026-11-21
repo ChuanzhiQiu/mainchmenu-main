@@ -6,22 +6,19 @@ import base64
 import hashlib
 import json
 import logging
+from functools import lru_cache
 from typing import Any, Dict, Union
 from django.conf import settings
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_INSECURE_KEY = 'mainch-default-insecure-key-for-development'
 
-def get_fernet_key() -> bytes:
-    """
-    Derives a 32-byte url-safe base64-encoded key from settings.ENCRYPTION_KEY or settings.SECRET_KEY.
-    Guarantees deterministic, secure encryption in both cloud production and local dev/test environments.
-    """
-    raw_key = getattr(settings, 'ENCRYPTION_KEY', None)
-    if not raw_key:
-        raw_key = getattr(settings, 'SECRET_KEY', 'mainch-default-insecure-key-for-development')
 
+@lru_cache(maxsize=4)
+def _derivar_clave(raw_key: Union[str, bytes]) -> bytes:
+    """Deriva (y memoriza) la clave Fernet a partir del material secreto real."""
     if isinstance(raw_key, str):
         raw_bytes = raw_key.encode('utf-8')
     else:
@@ -30,6 +27,24 @@ def get_fernet_key() -> bytes:
     # Derive deterministic 32-byte key via SHA256 and base64-urlencode for Fernet
     derived_32 = hashlib.sha256(raw_bytes).digest()
     return base64.urlsafe_b64encode(derived_32)
+
+
+def get_fernet_key() -> bytes:
+    """
+    Derives a 32-byte url-safe base64-encoded key from settings.ENCRYPTION_KEY or settings.SECRET_KEY.
+    Guarantees deterministic, secure encryption in both cloud production and local dev/test environments.
+
+    La derivación se cachea por material secreto (str/bytes), de modo que los overrides
+    de settings en tests producen claves distintas.
+    """
+    raw_key = getattr(settings, 'ENCRYPTION_KEY', None)
+    if not raw_key:
+        raw_key = getattr(settings, 'SECRET_KEY', DEFAULT_INSECURE_KEY)
+
+    if not isinstance(raw_key, (str, bytes)):
+        raw_key = str(raw_key)
+
+    return _derivar_clave(raw_key)
 
 
 def get_cipher() -> Fernet:

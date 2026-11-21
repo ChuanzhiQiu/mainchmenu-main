@@ -6,18 +6,20 @@ from .models import (
     Restaurante, PlatoPrecioCanal, Terminal, Cajero, TurnoCaja, Mesa, Area,
     CredencialRestaurante, Categoria, get_restaurante_de_usuario
 )
-from django.http import JsonResponse, Http404, HttpResponseForbidden
+from django.http import JsonResponse, Http404, HttpResponseForbidden, HttpResponse
 from django.contrib import messages
 from django.utils import timezone
 import json
 import math
+import hashlib
 from .utils import imprimir_comanda
 from django.core.exceptions import ValidationError
 from django.db import transaction, IntegrityError
 from itertools import groupby
 from decimal import Decimal, InvalidOperation
 from django.db.models import (
-    Sum, Count, Q, F, Value, DecimalField, IntegerField, Subquery, OuterRef
+    Sum, Count, Q, F, Value, DecimalField, IntegerField, Subquery, OuterRef,
+    ExpressionWrapper
 )
 from datetime import datetime, timedelta, date
 from django.db.models.functions import TruncDay, Coalesce
@@ -88,6 +90,15 @@ def get_restaurante_sesion(request):
     restaurante_id = request.session.get("restaurante_id")
     if not restaurante_id:
         return None
+    # Reutilizar el tenant ya resuelto por el middleware si coincide con la sesión.
+    tenant_actual = getattr(request, "restaurante", None)
+    if (
+        tenant_actual is not None
+        and getattr(tenant_actual, "id", None) is not None
+        and str(tenant_actual.id) == str(restaurante_id)
+        and getattr(tenant_actual, "activo", False) is True
+    ):
+        return tenant_actual
     return Restaurante.objects.filter(id=restaurante_id, activo=True).first()
 
 
@@ -311,30 +322,49 @@ def logout_admin(request):
 @restaurante_session_required
 def inicio(request):
     restaurante = get_current_restaurante(request)
-    pedidos_qs = (
-        Orden.objects.filter(restaurante=restaurante, estado=Orden.ESTADO_EN_CURSO)
-        .prefetch_related('items__plato', 'items__menu__platos')
-        .order_by('fecha', 'hora', 'id')
-    )
-
-    pedidos_local = [p for p in pedidos_qs if not p.es_delivery]
-    pedidos_delivery = [p for p in pedidos_qs if p.es_delivery]
-
     is_htmx = (
         request.headers.get("HX-Request") == "true"
         or request.META.get("HTTP_HX_REQUEST") == "true"
     )
+
+    kds_qs = (
+        Orden.objects.filter(restaurante=restaurante, estado=Orden.ESTADO_EN_CURSO)
+        .order_by('fecha', 'hora', 'id')
+    )
+
+    # Firma barata del tablero KDS: una sola consulta liviana sobre columnas locales.
+    firma = hashlib.md5()
+    for fila in kds_qs.values_list(
+        'id', 'estado', 'canal_venta', 'tipo_pago',
+        'monto_total', 'mesa_id', 'cliente', 'hora',
+    ):
+        firma.update(repr(fila).encode('utf-8'))
+    kds_sig = firma.hexdigest()
+
+    # Polling HTMX: si el tablero no cambió, evitar prefetch y render completo.
+    sig_cliente = request.GET.get('sig')
+    if is_htmx and sig_cliente and sig_cliente == kds_sig:
+        return HttpResponse(status=204)
+
+    pedidos_qs = kds_qs.prefetch_related('items__plato', 'items__menu__platos')
+
+    pedidos_local = [p for p in pedidos_qs if not p.es_delivery]
+    pedidos_delivery = [p for p in pedidos_qs if p.es_delivery]
 
     if is_htmx:
         return render(request, "Menu/partials/kds_board.html", {
             "pedidos_en_curso": pedidos_qs,
             "pedidos_local": pedidos_local,
             "pedidos_delivery": pedidos_delivery,
+            "kds_sig": kds_sig,
             "restaurante": restaurante,
         })
 
     # Filtros para el historial
-    historial = Orden.objects.filter(restaurante=restaurante, estado__in=[Orden.ESTADO_COMPLETADA, Orden.ESTADO_ELIMINADA])
+    historial = Orden.objects.filter(
+        restaurante=restaurante,
+        estado__in=[Orden.ESTADO_COMPLETADA, Orden.ESTADO_ELIMINADA],
+    ).select_related('cajero', 'mesa')
 
     # Obtener parámetros de filtro
     filtro_estado = request.GET.get("estado")
@@ -368,6 +398,7 @@ def inicio(request):
         "tipos_pago": tipos_pago,
         "estados": estados,
         "canales": canales,
+        "kds_sig": kds_sig,
         "restaurante": restaurante,
     })
 
@@ -756,25 +787,9 @@ def crear_orden(request):
                     return redirect("Menu:crear_orden")
 
                 if tipo == "plato":
-                    try:
-                        plato = Plato.all_objects.get(id=obj_id, restaurante=restaurante)
-                        items_to_create.append(("plato", plato, cantidad))
-                    except (Plato.DoesNotExist, ValueError, TypeError):
-                        msg = f"Plato con ID {obj_id} no existe."
-                        if is_json or is_ajax:
-                            return JsonResponse({"success": False, "message": msg}, status=400)
-                        messages.error(request, msg)
-                        return redirect("Menu:crear_orden")
+                    items_to_create.append(("plato", obj_id, cantidad, "items"))
                 elif tipo == "menu":
-                    try:
-                        menu = Menu.all_objects.get(id=obj_id, restaurante=restaurante)
-                        items_to_create.append(("menu", menu, cantidad))
-                    except (Menu.DoesNotExist, ValueError, TypeError):
-                        msg = f"Menú con ID {obj_id} no existe."
-                        if is_json or is_ajax:
-                            return JsonResponse({"success": False, "message": msg}, status=400)
-                        messages.error(request, msg)
-                        return redirect("Menu:crear_orden")
+                    items_to_create.append(("menu", obj_id, cantidad, "items"))
                 else:
                     msg = f"Tipo de ítem no válido: '{tipo}'."
                     if is_json or is_ajax:
@@ -800,13 +815,14 @@ def crear_orden(request):
                             return redirect("Menu:crear_orden")
                         try:
                             plato_id_int = int(plato_id)
-                            plato = Plato.objects.get(id=plato_id_int, restaurante=restaurante)
-                            items_to_create.append(("plato", plato, cant))
-                        except (Plato.DoesNotExist, ValueError, TypeError):
+                        except (ValueError, TypeError):
+                            plato_id_int = None
+                        if plato_id_int is None:
                             if is_json or is_ajax:
                                 return JsonResponse({"success": False, "message": "Plato no encontrado."}, status=400)
                             messages.error(request, "Plato no encontrado.")
                             return redirect("Menu:crear_orden")
+                        items_to_create.append(("plato", plato_id_int, cant, "platos"))
             except Exception as e:
                 logger.warning(f"Error parseando platos legacy: {e}")
 
@@ -828,13 +844,14 @@ def crear_orden(request):
                             return redirect("Menu:crear_orden")
                         try:
                             menu_id_int = int(menu_id)
-                            menu = Menu.objects.get(id=menu_id_int, restaurante=restaurante)
-                            items_to_create.append(("menu", menu, cant))
-                        except (Menu.DoesNotExist, ValueError, TypeError):
+                        except (ValueError, TypeError):
+                            menu_id_int = None
+                        if menu_id_int is None:
                             if is_json or is_ajax:
                                 return JsonResponse({"success": False, "message": "Menú no encontrado."}, status=400)
                             messages.error(request, "Menú no encontrado.")
                             return redirect("Menu:crear_orden")
+                        items_to_create.append(("menu", menu_id_int, cant, "menus"))
             except Exception as e:
                 logger.warning(f"Error parseando menus legacy: {e}")
 
@@ -844,6 +861,63 @@ def crear_orden(request):
                 return JsonResponse({"success": False, "message": msg}, status=400)
             messages.error(request, msg)
             return redirect("Menu:crear_orden")
+
+        # 5. Resolución en bloque de platos, menús y price tiers (evita N+1).
+        plato_ids_solicitados = {oid for tipo, oid, _, _ in items_to_create if tipo == "plato"}
+        menu_ids_solicitados = {oid for tipo, oid, _, _ in items_to_create if tipo == "menu"}
+
+        platos_map = {
+            p.id: p
+            for p in Plato.all_objects.filter(restaurante=restaurante, id__in=plato_ids_solicitados)
+        }
+        menus_map = {
+            m.id: m
+            for m in Menu.all_objects.filter(restaurante=restaurante, id__in=menu_ids_solicitados)
+        }
+        precios_canal_map = {}
+        if plato_ids_solicitados:
+            for tier in PlatoPrecioCanal.objects.filter(
+                restaurante=restaurante,
+                canal=canal_venta,
+                disponible=True,
+                plato_id__in=plato_ids_solicitados,
+            ):
+                precios_canal_map.setdefault(tier.plato_id, tier.precio)
+
+        def _error_item_faltante(tipo, obj_id, origen):
+            if origen == "platos":
+                return "Plato no encontrado."
+            if origen == "menus":
+                return "Menú no encontrado."
+            if tipo == "plato":
+                return f"Plato con ID {obj_id} no existe."
+            return f"Menú con ID {obj_id} no existe."
+
+        items_resueltos = []
+        for tipo, obj_id, cant, origen in items_to_create:
+            if tipo == "plato":
+                plato = platos_map.get(obj_id)
+                if plato is None:
+                    msg = _error_item_faltante(tipo, obj_id, origen)
+                    if is_json or is_ajax:
+                        return JsonResponse({"success": False, "message": msg}, status=400)
+                    messages.error(request, msg)
+                    return redirect("Menu:crear_orden")
+                precio_tier = precios_canal_map.get(obj_id)
+                if precio_tier is not None and precio_tier > 0:
+                    precio_unitario = Decimal(str(precio_tier))
+                else:
+                    precio_unitario = Decimal(str(plato.valor))
+                items_resueltos.append(("plato", plato, cant, precio_unitario))
+            else:
+                menu = menus_map.get(obj_id)
+                if menu is None:
+                    msg = _error_item_faltante(tipo, obj_id, origen)
+                    if is_json or is_ajax:
+                        return JsonResponse({"success": False, "message": msg}, status=400)
+                    messages.error(request, msg)
+                    return redirect("Menu:crear_orden")
+                items_resueltos.append(("menu", menu, cant, Decimal(str(menu.precio_menus))))
 
         # 6. Creación atómica de la orden con Price Tiers, restaurante, cajero y turno
         try:
@@ -903,27 +977,28 @@ def crear_orden(request):
                 )
                 nueva_orden.save()
 
-                for item_type, obj, cant in items_to_create:
-                    if item_type == "plato":
-                        precio_canal = obj.get_precio_para_canal(canal_venta)
-                        OrdenItem.objects.create(
-                            restaurante=restaurante,
-                            orden=nueva_orden,
-                            plato=obj,
-                            cantidad=cant,
-                            precio_unitario=precio_canal
-                        )
-                    elif item_type == "menu":
-                        OrdenItem.objects.create(
-                            restaurante=restaurante,
-                            orden=nueva_orden,
-                            menu=obj,
-                            cantidad=cant,
-                            precio_unitario=obj.precio_menus
-                        )
+                orden_items = [
+                    OrdenItem(
+                        restaurante=restaurante,
+                        orden=nueva_orden,
+                        plato=obj if tipo == "plato" else None,
+                        menu=obj if tipo == "menu" else None,
+                        cantidad=cant,
+                        precio_unitario=precio_unitario,
+                    )
+                    for tipo, obj, cant, precio_unitario in items_resueltos
+                ]
+                OrdenItem.objects.bulk_create(orden_items)
 
-
-                nueva_orden.monto_total = nueva_orden.calcular_total()
+                total = sum(
+                    (item.precio_unitario * item.cantidad for item in orden_items),
+                    Decimal('0.00'),
+                )
+                nueva_orden.monto_total = max(
+                    (total - nueva_orden.descuento).quantize(Decimal('0.01')),
+                    Decimal('0.00'),
+                )
+                nueva_orden._skip_total_recalc = True
                 nueva_orden.save(update_fields=["monto_total"])
 
                 try:
@@ -952,7 +1027,7 @@ def crear_orden(request):
     # Manejo de solicitudes GET
     restaurante = get_current_restaurante(request)
     platos = Plato.objects.filter(restaurante=restaurante).order_by('nombre')
-    menus = Menu.objects.filter(restaurante=restaurante).order_by('nombre')
+    menus = Menu.objects.filter(restaurante=restaurante).prefetch_related('platos').order_by('nombre')
     
     platos_por_letra = {letra: list(grupo) for letra, grupo in groupby(platos, key=lambda x: x.nombre[0].upper())}
     menus_por_letra = {letra: list(grupo) for letra, grupo in groupby(menus, key=lambda x: x.nombre[0].upper())}
@@ -1472,17 +1547,42 @@ def data_analisis(request):
         ordenes_base = Orden.objects.filter(restaurante=restaurante, fecha__range=[fecha_inicio, fecha_fin])
         ordenes_completadas = ordenes_base.filter(estado=Orden.ESTADO_COMPLETADA)
 
-        # 1. KPIs Principales
-        total_ordenes_completadas = ordenes_completadas.count()
-        total_ordenes_todas = ordenes_base.count()
-        ordenes_canceladas_count = ordenes_base.filter(estado=Orden.ESTADO_ELIMINADA).count()
+        canales_delivery_list = [Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY]
+        filtro_completadas = Q(estado=Orden.ESTADO_COMPLETADA)
+        filtro_delivery = filtro_completadas & Q(canal_venta__in=canales_delivery_list)
+        filtro_local = filtro_completadas & ~Q(canal_venta__in=canales_delivery_list)
 
-        facturacion_agg = ordenes_completadas.aggregate(
-            total_facturado=Sum("monto_total"),
-            total_descuentos=Sum("descuento")
+        # 1. KPIs consolidados en una sola pasada SQL (agregados condicionales).
+        kpis = ordenes_base.aggregate(
+            total_todas=Count("id"),
+            completadas=Count("id", filter=filtro_completadas),
+            canceladas=Count("id", filter=Q(estado=Orden.ESTADO_ELIMINADA)),
+            facturado=Sum("monto_total", filter=filtro_completadas),
+            descuentos=Sum("descuento", filter=filtro_completadas),
+            delivery_pedidos=Count("id", filter=filtro_delivery),
+            delivery_facturado=Sum("monto_total", filter=filtro_delivery),
+            local_pedidos=Count("id", filter=filtro_local),
+            local_facturado=Sum("monto_total", filter=filtro_local),
+            ubereats_pedidos=Count(
+                "id", filter=filtro_completadas & Q(canal_venta=Orden.CANAL_UBER_EATS)
+            ),
+            ubereats_facturado=Sum(
+                "monto_total", filter=filtro_completadas & Q(canal_venta=Orden.CANAL_UBER_EATS)
+            ),
+            peya_pedidos=Count(
+                "id", filter=filtro_completadas & Q(canal_venta=Orden.CANAL_PEDIDOS_YA)
+            ),
+            peya_facturado=Sum(
+                "monto_total", filter=filtro_completadas & Q(canal_venta=Orden.CANAL_PEDIDOS_YA)
+            ),
         )
-        total_facturado = float(facturacion_agg["total_facturado"] or 0.0)
-        total_descuentos = float(facturacion_agg["total_descuentos"] or 0.0)
+
+        total_ordenes_completadas = kpis["completadas"] or 0
+        total_ordenes_todas = kpis["total_todas"] or 0
+        ordenes_canceladas_count = kpis["canceladas"] or 0
+
+        total_facturado = float(kpis["facturado"] or 0.0)
+        total_descuentos = float(kpis["descuentos"] or 0.0)
 
         # Ticket Promedio
         ticket_promedio = (total_facturado / total_ordenes_completadas) if total_ordenes_completadas > 0 else 0.0
@@ -1573,10 +1673,17 @@ def data_analisis(request):
 
         # 4. Horas Punta de Venta (Peak Hours: 00:00 a 23:00)
         horas_dict = {h: 0 for h in range(24)}
-        for hora_val in ordenes_completadas.values_list("hora", flat=True):
-            if hora_val:
-                horas_dict[hora_val.hour] += 1
-        
+        horas_por_franja = (
+            ordenes_completadas
+            .annotate(hora_num=ExtractHour("hora"))
+            .values("hora_num")
+            .annotate(cantidad=Count("id"))
+        )
+        for franja in horas_por_franja:
+            hora_num = franja["hora_num"]
+            if hora_num is not None:
+                horas_dict[int(hora_num)] = franja["cantidad"]
+
         horas_labels = [f"{h:02d}:00" for h in range(24)]
         horas_data = [horas_dict[h] for h in range(24)]
         hora_pico_val = max(horas_dict, key=horas_dict.get) if any(horas_dict.values()) else None
@@ -1601,26 +1708,22 @@ def data_analisis(request):
         canales_venta_data = [c['cantidad'] for c in canales_venta]
 
         # 7. Métricas Exclusivas de Evolución de Delivery
-        canales_delivery_list = [Orden.CANAL_UBER_EATS, Orden.CANAL_PEDIDOS_YA, Orden.CANAL_DELIVERY]
         ordenes_delivery = ordenes_completadas.filter(canal_venta__in=canales_delivery_list)
-        ordenes_local = ordenes_completadas.exclude(canal_venta__in=canales_delivery_list)
 
-        total_delivery_facturado = float(ordenes_delivery.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
-        total_delivery_pedidos = ordenes_delivery.count()
+        total_delivery_facturado = float(kpis["delivery_facturado"] or 0.0)
+        total_delivery_pedidos = kpis["delivery_pedidos"] or 0
         ticket_promedio_delivery = (total_delivery_facturado / total_delivery_pedidos) if total_delivery_pedidos > 0 else 0.0
 
-        total_local_facturado = float(ordenes_local.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
-        total_local_pedidos = ordenes_local.count()
+        total_local_facturado = float(kpis["local_facturado"] or 0.0)
+        total_local_pedidos = kpis["local_pedidos"] or 0
         ticket_promedio_local = (total_local_facturado / total_local_pedidos) if total_local_pedidos > 0 else 0.0
 
         # Participación de Apps: Uber Eats vs Pedidos Ya vs Delivery Propio
-        pedidos_ubereats = ordenes_completadas.filter(canal_venta=Orden.CANAL_UBER_EATS)
-        total_ubereats = float(pedidos_ubereats.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
-        count_ubereats = pedidos_ubereats.count()
+        total_ubereats = float(kpis["ubereats_facturado"] or 0.0)
+        count_ubereats = kpis["ubereats_pedidos"] or 0
 
-        pedidos_peya = ordenes_completadas.filter(canal_venta=Orden.CANAL_PEDIDOS_YA)
-        total_peya = float(pedidos_peya.aggregate(tot=Sum("monto_total"))["tot"] or 0.0)
-        count_peya = pedidos_peya.count()
+        total_peya = float(kpis["peya_facturado"] or 0.0)
+        count_peya = kpis["peya_pedidos"] or 0
 
         # Tendencia temporal de delivery por día
         ventas_delivery_tiempo = (
@@ -1813,21 +1916,29 @@ def inventario_view(request):
             Q(nombre__icontains=query) | Q(codigo__icontains=query)
         )
 
-    todos_activos = Insumo.objects.filter(restaurante=restaurante, activo=True)
-    total_insumos = todos_activos.count()
-    quiebre_count = todos_activos.filter(stock_actual__lte=Decimal("0.000")).count()
-    bajo_minimo_count = todos_activos.filter(
-        stock_actual__gt=Decimal("0.000"),
-        stock_actual__lt=F("stock_minimo")
-    ).count()
-    normal_count = todos_activos.filter(
-        stock_actual__gte=F("stock_minimo")
-    ).count()
+    # KPIs de cabecera consolidados en una sola consulta agregada.
+    metricas_inventario = Insumo.objects.filter(restaurante=restaurante, activo=True).aggregate(
+        total_insumos=Count("id"),
+        quiebre_count=Count("id", filter=Q(stock_actual__lte=Decimal("0.000"))),
+        bajo_minimo_count=Count(
+            "id",
+            filter=Q(stock_actual__gt=Decimal("0.000"), stock_actual__lt=F("stock_minimo")),
+        ),
+        normal_count=Count("id", filter=Q(stock_actual__gte=F("stock_minimo"))),
+        valor_total=Sum(
+            ExpressionWrapper(
+                F("stock_actual") * F("costo_unitario"),
+                output_field=DecimalField(max_digits=16, decimal_places=2),
+            ),
+            filter=Q(stock_actual__gt=Decimal("0.000")) & Q(costo_unitario__gt=Decimal("0.000")),
+        ),
+    )
 
-    valor_total_inventario = Decimal("0.000")
-    for ins in todos_activos:
-        if ins.stock_actual > Decimal("0.000") and ins.costo_unitario > Decimal("0.000"):
-            valor_total_inventario += (ins.stock_actual * ins.costo_unitario)
+    total_insumos = metricas_inventario["total_insumos"] or 0
+    quiebre_count = metricas_inventario["quiebre_count"] or 0
+    bajo_minimo_count = metricas_inventario["bajo_minimo_count"] or 0
+    normal_count = metricas_inventario["normal_count"] or 0
+    valor_total_inventario = metricas_inventario["valor_total"] or Decimal("0.000")
 
     filtro_estado = request.GET.get("estado", "").lower()
     if filtro_estado == "quiebre":
@@ -2301,9 +2412,15 @@ def api_cajero_estado(request, slug=None):
     """Retorna el estado de bloqueo y la información del cajero/turno actual en sesión."""
     restaurante = getattr(request, 'restaurante', None) or get_current_restaurante(request)
     cajero_id = request.session.get('cajero_id') if hasattr(request, "session") else None
-    cajero = Cajero.all_objects.filter(id=cajero_id).first() if cajero_id else None
+    cajero = (
+        Cajero.all_objects.filter(id=cajero_id, restaurante=restaurante).first()
+        if cajero_id else None
+    )
     turno_id = request.session.get('turno_id') if hasattr(request, "session") else None
-    turno = TurnoCaja.all_objects.filter(id=turno_id).first() if turno_id else None
+    turno = (
+        TurnoCaja.all_objects.filter(id=turno_id, restaurante=restaurante).first()
+        if turno_id else None
+    )
 
     return JsonResponse({
         "success": True,
@@ -2396,12 +2513,14 @@ def api_turno_abrir(request, slug=None):
         return JsonResponse({"success": False, "error": "Cajero no encontrado en este restaurante."}, status=404)
 
     # Verificar si ya existe un turno abierto para este cajero
-    abiertos = TurnoCaja.all_objects.filter(cajero=cajero, estado=TurnoCaja.ESTADO_ABIERTO)
-    if abiertos.exists():
+    turno_abierto = TurnoCaja.all_objects.filter(
+        restaurante=restaurante, cajero=cajero, estado=TurnoCaja.ESTADO_ABIERTO
+    ).first()
+    if turno_abierto is not None:
         return JsonResponse({
             "success": False,
-            "error": f"El cajero '{cajero.nombre}' ya posee un turno abierto (Turno #{abiertos.first().id}).",
-            "turno_id": abiertos.first().id
+            "error": f"El cajero '{cajero.nombre}' ya posee un turno abierto (Turno #{turno_abierto.id}).",
+            "turno_id": turno_abierto.id
         }, status=400)
 
     monto_raw = body.get("monto_inicial", "0.0")
@@ -2736,17 +2855,23 @@ def cajeros_admin_view(request):
 
     if filtro_fecha_desde:
         try:
-            turnos_qs = turnos_qs.filter(fecha_cierre__date__gte=date.fromisoformat(filtro_fecha_desde))
+            desde = datetime.combine(date.fromisoformat(filtro_fecha_desde), datetime.min.time())
+            turnos_qs = turnos_qs.filter(fecha_cierre__gte=timezone.make_aware(desde))
         except ValueError:
             filtro_fecha_desde = ""
 
     if filtro_fecha_hasta:
         try:
-            turnos_qs = turnos_qs.filter(fecha_cierre__date__lte=date.fromisoformat(filtro_fecha_hasta))
+            hasta = datetime.combine(date.fromisoformat(filtro_fecha_hasta), datetime.min.time()) + timedelta(days=1)
+            turnos_qs = turnos_qs.filter(fecha_cierre__lt=timezone.make_aware(hasta))
         except ValueError:
             filtro_fecha_hasta = ""
 
     total_turnos_cerrados = turnos_qs.count()
+
+    # Tope defensivo del listado: 50 por defecto, 200 cuando hay filtros explícitos.
+    hay_filtros = bool(filtro_cajero_id or filtro_fecha_desde or filtro_fecha_hasta)
+    limite_turnos = 200 if hay_filtros else 50
 
     turnos = list(
         turnos_qs.annotate(
@@ -2759,7 +2884,7 @@ def cajeros_admin_view(request):
                 Value(Decimal("0.00")),
                 output_field=DecimalField(max_digits=12, decimal_places=2),
             )
-        ).order_by("-fecha_cierre", "-fecha_apertura")
+        ).order_by("-fecha_cierre", "-fecha_apertura")[:limite_turnos]
     )
 
     # Monto esperado y diferencia calculados una sola vez en Python (sin hits extra).

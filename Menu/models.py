@@ -522,7 +522,7 @@ class Orden(models.Model):
             descuento = Decimal('0.00')
         total_con_descuento = subtotal - descuento
         total = max(total_con_descuento, Decimal('0.00'))
-        return round(float(total), 2)
+        return total.quantize(Decimal('0.01'))
 
     objects = TenantManager()
     all_objects = models.Manager()
@@ -550,14 +550,25 @@ class Orden(models.Model):
                     self.descuento = val
             except (ValueError, TypeError, InvalidOperation):
                 self.descuento = Decimal('0.00')
-        if self.pk:
-            self.monto_total = self.calcular_total() 
+        update_fields = kwargs.get('update_fields')
+        skip_recalc = getattr(self, '_skip_total_recalc', False)
+        if self.pk and not skip_recalc and (update_fields is None or 'monto_total' in update_fields):
+            self.monto_total = self.calcular_total()
+        # La bandera de idempotencia aplica solo a este save().
+        self._skip_total_recalc = False
         super().save(*args, **kwargs)
 
     class Meta:
         base_manager_name = 'all_objects'
         verbose_name = "Orden"
         verbose_name_plural = "Órdenes"
+        indexes = [
+            models.Index(fields=['restaurante', 'estado', 'fecha', 'hora'], name='ord_rest_est_fech_hr_idx'),
+            models.Index(fields=['restaurante', 'fecha', 'hora'], name='ord_rest_fech_hr_idx'),
+            models.Index(fields=['restaurante', 'turno', 'estado'], name='ord_rest_turn_est_idx'),
+            models.Index(fields=['restaurante', 'canal_venta', 'fecha'], name='ord_rest_can_fech_idx'),
+            models.Index(fields=['restaurante', 'order_id_externo'], name='ord_rest_ext_id_idx'),
+        ]
 
 # Modelo para representar los ítems de una orden
 class OrdenItem(models.Model):
@@ -586,6 +597,10 @@ class OrdenItem(models.Model):
         base_manager_name = 'all_objects'
         verbose_name = "Ítem de Orden"
         verbose_name_plural = "Ítems de Orden"
+        indexes = [
+            models.Index(fields=['orden', 'plato'], name='orditem_ord_plato_idx'),
+            models.Index(fields=['orden', 'menu'], name='orditem_ord_menu_idx'),
+        ]
 
     def __str__(self):
         if self.plato:
@@ -974,6 +989,10 @@ class MovimientoStock(models.Model):
         verbose_name = "Movimiento de Stock (Kardex)"
         verbose_name_plural = "Movimientos de Stock (Kardex)"
         ordering = ['-fecha_hora', '-id']
+        indexes = [
+            models.Index(fields=['restaurante', '-fecha_hora', '-id'], name='mov_rest_fh_id_idx'),
+            models.Index(fields=['restaurante', 'tipo', '-fecha_hora'], name='mov_rest_tipo_fh_idx'),
+        ]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1384,6 +1403,10 @@ class TurnoCaja(models.Model):
         verbose_name = "Turno de Caja"
         verbose_name_plural = "Turnos de Caja"
         ordering = ['-fecha_apertura']
+        indexes = [
+            models.Index(fields=['restaurante', 'cajero', 'estado'], name='turno_rest_caj_est_idx'),
+            models.Index(fields=['restaurante', 'estado', '-fecha_apertura'], name='turno_rest_est_ap_idx'),
+        ]
 
     def __str__(self):
         return f"Turno #{self.id} - {self.cajero.nombre} ({self.estado})"
@@ -1686,6 +1709,10 @@ class Pago(models.Model):
         verbose_name = "Pago"
         verbose_name_plural = "Pagos"
         ordering = ['-creado_el']
+        indexes = [
+            models.Index(fields=['restaurante', '-creado_el'], name='pago_rest_creado_idx'),
+            models.Index(fields=['restaurante', 'orden'], name='pago_rest_orden_idx'),
+        ]
 
     def __str__(self):
         return f"Pago #{self.id} - {self.metodo_pago} (${self.monto})"

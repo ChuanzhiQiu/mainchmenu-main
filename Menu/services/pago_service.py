@@ -36,15 +36,23 @@ def _to_decimal(value: Any, default: str = "0.00") -> Decimal:
         return Decimal(default)
 
 
-def _normalizar_orden(orden: Union[int, Orden]) -> Orden:
-    """Normaliza el parámetro `orden` (ID o instancia) y bloquea la fila."""
+def _normalizar_orden(orden: Union[int, Orden], restaurante: Optional[Union[Restaurante, int]] = None) -> Orden:
+    """Normaliza el parámetro `orden` (ID o instancia) y bloquea la fila por pk + tenant."""
     if hasattr(orden, "id"):
         orden_id = orden.id
     else:
         orden_id = orden
 
+    tenant_id = getattr(restaurante, "id", restaurante) if restaurante is not None else None
+    if tenant_id is None:
+        tenant_id = getattr(orden, "restaurante_id", None)
+
+    queryset = Orden.objects.select_for_update()
+    if tenant_id is not None:
+        queryset = queryset.filter(restaurante_id=tenant_id)
+
     try:
-        return Orden.objects.select_for_update().get(id=orden_id)
+        return queryset.get(id=orden_id)
     except Orden.DoesNotExist as exc:
         raise PagoValidationError(f"La orden #{orden_id} no existe.") from exc
 
@@ -103,7 +111,7 @@ def registrar_pago(
     :return: Diccionario con pago, total_pagado, saldo_pendiente, orden_completada y cambio.
     """
     # 1. Bloquear y normalizar la orden para serializar pagos concurrentes.
-    orden = _normalizar_orden(orden)
+    orden = _normalizar_orden(orden, restaurante)
 
     # 2. Validaciones multi-tenant estrictas.
     tenant_id = _validar_multi_tenant(

@@ -10,8 +10,10 @@ Reglas de aislamiento aplicadas:
 """
 from decimal import Decimal
 
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.routers import DefaultRouter
 
@@ -59,6 +61,14 @@ class MesaViewSet(_TenantModelViewSet):
     serializer_class = MesaSerializer
 
 
+class OrdenPagination(PageNumberPagination):
+    """Paginación opt-in (solo cuando el cliente envía `?page=`)."""
+
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+
+
 class OrdenViewSet(viewsets.ReadOnlyModelViewSet):
     """Consulta de órdenes + endpoint de pago (registrar-pago)."""
 
@@ -66,9 +76,51 @@ class OrdenViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         restaurante = get_current_restaurante(self.request)
-        return Orden.objects.filter(restaurante=restaurante).select_related(
-            "mesa", "cajero", "turno"
+        queryset = (
+            Orden.objects.filter(restaurante=restaurante)
+            .select_related("cajero", "mesa")
+            .order_by("-fecha", "-hora", "-id")
         )
+
+        params = getattr(self.request, "query_params", {}) or {}
+
+        estado = (params.get("estado") or "").strip()
+        if estado:
+            queryset = queryset.filter(estado=estado)
+
+        canal_venta = (params.get("canal_venta") or "").strip()
+        if canal_venta:
+            queryset = queryset.filter(canal_venta=canal_venta)
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Paginación DRF explícita solo cuando el cliente la solicita (?page=).
+        if "page" in request.query_params:
+            paginator = OrdenPagination()
+            page = paginator.paginate_queryset(queryset, request, view=self)
+            serializer = self.get_serializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        # Compatibilidad: listado JSON plano con tope defensivo (?limit=).
+        try:
+            limit = int(request.query_params.get("limit", 100))
+        except (TypeError, ValueError):
+            limit = 100
+        limit = max(1, min(limit, 200))
+
+        serializer = self.get_serializer(queryset[:limit], many=True)
+        return Response(serializer.data)
 
     def _resolver_cajero(self, restaurante):
         request = self.request
