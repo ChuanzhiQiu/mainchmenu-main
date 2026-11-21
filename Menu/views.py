@@ -959,9 +959,12 @@ def crear_orden(request):
     categorias = Categoria.objects.filter(restaurante=restaurante, activo=True).order_by('orden', 'nombre')
     
     es_admin = request.user.is_authenticated and request.user.is_staff
-    turno_abierto = TurnoCaja.all_objects.filter(
-        restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO
-    ).exists()
+    if not restaurante.modulo_cajeros:
+        turno_abierto = True
+    else:
+        turno_abierto = TurnoCaja.all_objects.filter(
+            restaurante=restaurante, estado=TurnoCaja.ESTADO_ABIERTO
+        ).exists()
     # El usuario de caja NO puede registrar pedidos por delivery
     if es_admin:
         canales_ventas = list(Orden.CANAL_CHOICES)
