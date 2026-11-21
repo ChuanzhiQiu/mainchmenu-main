@@ -410,6 +410,7 @@
     const ES_ADMIN = {{ es_admin|yesno:"true,false" }};
     const TURNO_ABIERTO_INICIAL = {{ turno_abierto|yesno:"true,false" }};
     const MODULO_SALONES_MESAS = {{ modulos.salones_mesas|yesno:"true,false" }};
+    const MODULO_CAJEROS = {{ modulos.cajeros|yesno:"true,false" }};
 
     document.addEventListener("DOMContentLoaded", () => {
         // Carrito en memoria: { key: { tipo, id, nombre, valor, cantidad } }
@@ -534,9 +535,13 @@
             }
         }
 
-        setTurnoBloqueado(!ES_ADMIN && !TURNO_ABIERTO_INICIAL);
-        verificarTurno();
-        setInterval(verificarTurno, 5000);
+        if (MODULO_CAJEROS) {
+            setTurnoBloqueado(!ES_ADMIN && !TURNO_ABIERTO_INICIAL);
+            verificarTurno();
+            setInterval(verificarTurno, 5000);
+        } else {
+            setTurnoBloqueado(false);
+        }
 
         // 1. Filtro por Pestañas de Categoría
         tabButtons.forEach(btn => {
@@ -750,7 +755,7 @@
 
         // 10. Envío Asíncrono de la Orden vía fetch() (F15)
         confirmarBtn.addEventListener("click", () => {
-            if (!ES_ADMIN && confirmarBtn.disabled) {
+            if (MODULO_CAJEROS && !ES_ADMIN && confirmarBtn.disabled) {
                 const msgTurno = "Debe abrir un turno de caja para generar comandas";
                 if (window.showToast) window.showToast(msgTurno, "warning");
                 else alert(msgTurno);
