@@ -34,3 +34,7 @@ desktop.ini
 
 # Ignorar archivos estáticos recolectados (generados por collectstatic)
 staticfiles/
+
+# Ignorar dependencias de Node y artefactos de distribución
+node_modules/
+print_agent.zip
