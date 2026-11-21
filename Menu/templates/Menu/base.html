@@ -341,9 +341,83 @@
 
         // =====================================================================
         // GLOBAL ESC/POS PRINTER SERVICE (MainchDirectPrint)
-        // Motor de impresión con triple fallback: WebUSB -> Web Serial -> Iframe
+        // Motores: Local Agent (Windows) -> WebUSB -> Web Serial -> Iframe
         // =====================================================================
         window.MainchDirectPrint = {
+            LOCAL_AGENT_URL: "http://127.0.0.1:9100",
+
+            // ---- Motor 0: Puente Local Windows (MainchPrintAgent en 127.0.0.1:9100) ----
+            bytesToBase64(uint8Array) {
+                let binary = "";
+                const chunkSize = 0x8000;
+                for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                    binary += String.fromCharCode.apply(null, uint8Array.subarray(i, i + chunkSize));
+                }
+                return btoa(binary);
+            },
+
+            async checkLocalAgent(timeoutMs = 1500) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), timeoutMs);
+                try {
+                    const res = await fetch(`${this.LOCAL_AGENT_URL}/health`, {
+                        method: "GET",
+                        cache: "no-store",
+                        signal: controller.signal
+                    });
+                    if (!res.ok) return null;
+                    return await res.json();
+                } catch (e) {
+                    // Agente no instalado / no iniciado: se usa el siguiente motor.
+                    return null;
+                } finally {
+                    clearTimeout(timer);
+                }
+            },
+
+            async printRawViaLocalAgent(bytes, printerName = null, timeoutMs = 3000) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), timeoutMs);
+                try {
+                    const impresora = printerName || localStorage.getItem("mainch_local_printer_name") || "";
+                    const res = await fetch(`${this.LOCAL_AGENT_URL}/print`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            printer: impresora,
+                            raw_base64: this.bytesToBase64(bytes)
+                        }),
+                        signal: controller.signal
+                    });
+
+                    let json = null;
+                    try {
+                        json = await res.json();
+                    } catch (e) {
+                        json = null;
+                    }
+
+                    if (!res.ok || !json || !json.success) {
+                        const motivo = (json && json.error) || `HTTP ${res.status}`;
+                        throw new Error(`El puente local no pudo imprimir (${motivo}).`);
+                    }
+                    return json;
+                } finally {
+                    clearTimeout(timer);
+                }
+            },
+
+            async printViaLocalAgent(ordenId) {
+                const datos = await this.fetchOrdenData(ordenId);
+                const bytes = this.buildEscPosFromData(datos);
+                await this.printRawViaLocalAgent(bytes);
+
+                if (window.showToast) {
+                    window.showToast(`Comanda #${ordenId} impresa automáticamente (Puente Local).`, "success", 3000);
+                }
+                return true;
+            },
+
             async getDevice() {
                 if (!navigator.usb) return null;
                 try {
@@ -539,7 +613,7 @@
                 });
             },
 
-            // ---- Dispatcher con triple fallback ----
+            // ---- Dispatcher con fallback en cascada: Local -> WebUSB -> Serial -> Iframe ----
             async printOrderDirectly(ordenId) {
                 if (!ordenId) return false;
 
@@ -554,6 +628,15 @@
                         /access denied|permission|not allowed|securityerror/i.test(err.message || "")
                     );
                 };
+
+                // Motor 0: Puente Local Windows (sin diálogos ni permisos del navegador).
+                if (localStorage.getItem("mainch_local_agent_enabled") !== "0") {
+                    try {
+                        return await this.printViaLocalAgent(ordenId);
+                    } catch (err) {
+                        console.warn("Puente local no disponible, se intentan los motores del navegador:", err);
+                    }
+                }
 
                 // Modo explícito: Web Serial
                 if (modo === "serial") {
