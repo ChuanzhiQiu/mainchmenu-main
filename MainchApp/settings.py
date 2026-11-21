@@ -195,12 +195,12 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
-# Prevent 500 errors if a static file referenced in templates is not yet in the manifest
-WHITENOISE_MANIFEST_STRICT = False
+# Permitir a WhiteNoise servir estáticos de django.contrib.admin en Vercel sin collectstatic
+WHITENOISE_USE_FINDERS = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
