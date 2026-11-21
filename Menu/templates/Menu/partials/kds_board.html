@@ -2,7 +2,8 @@
 {% load formato %}
 <div id="kds-board"
      hx-get="{% url 'Menu:inicio' %}"
-     hx-trigger="every 5s, orderUpdated from:body"
+     hx-vals='{"sig": "{{ kds_sig|default:"" }}"}'
+     hx-trigger="every 5s [document.visibilityState === 'visible'], orderUpdated from:body"
      hx-swap="outerHTML"
      hx-target="#kds-board"
      class="w-full space-y-8">

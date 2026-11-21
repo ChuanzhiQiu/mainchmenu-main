@@ -53,7 +53,7 @@
         </div>
         <div class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {% for salon in areas %}
-            <div class="rounded-xl border border-slate-200 p-4 flex items-start justify-between gap-3 {% if not salon.activo %}opacity-60{% endif %}">
+            <div data-salon-card="{{ salon.id }}" class="rounded-xl border border-slate-200 p-4 flex items-start justify-between gap-3 {% if not salon.activo %}opacity-60{% endif %}">
                 <div class="min-w-0">
                     <div class="flex items-center gap-2">
                         <i data-lucide="map-pin" class="w-4 h-4 text-indigo-500 flex-shrink-0"></i>
@@ -61,11 +61,11 @@
                     </div>
                     <p class="text-xs text-slate-500 mt-1">Orden: {{ salon.orden }}</p>
                     {% if salon.activo %}
-                    <span class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span data-estado-badge class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                         <i data-lucide="check-circle-2" class="w-3 h-3"></i> Activo
                     </span>
                     {% else %}
-                    <span class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <span data-estado-badge class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                         <i data-lucide="ban" class="w-3 h-3"></i> Inactivo
                     </span>
                     {% endif %}
@@ -118,17 +118,17 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for mesa in mesas %}
-                    <tr class="fila-mesa hover:bg-slate-50/80 transition" data-salon-id="{{ mesa.area_id }}">
+                    <tr class="fila-mesa hover:bg-slate-50/80 transition-colors" id="fila-mesa-{{ mesa.id }}" data-salon-id="{{ mesa.area_id }}">
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ mesa.numero }}</td>
                         <td class="py-3.5 px-6 text-slate-600">{{ mesa.area.nombre }}</td>
                         <td class="py-3.5 px-6 text-center font-mono text-xs text-slate-700">{{ mesa.capacidad }} comensales</td>
                         <td class="py-3.5 px-6">
                             {% if mesa.activo %}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span data-estado-badge class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Activa
                             </span>
                             {% else %}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <span data-estado-badge class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                 <i data-lucide="ban" class="w-3.5 h-3.5"></i> Inactiva
                             </span>
                             {% endif %}
@@ -202,7 +202,7 @@
             </form>
             <div class="md:col-span-2 flex flex-wrap gap-2 content-start">
                 {% for cat in categorias %}
-                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold">
+                <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-semibold" id="chip-categoria-{{ cat.id }}">
                     {{ cat.nombre }}
                     <button type="button" class="btn-editar-categoria text-slate-400 hover:text-indigo-600 transition" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" title="Editar">
                         <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
@@ -243,7 +243,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for plato in platos %}
-                    <tr class="hover:bg-slate-50/80 transition" id="fila-plato-{{ plato.id }}">
+                    <tr class="hover:bg-slate-50/80 transition-colors cv-auto-row" id="fila-plato-{{ plato.id }}">
                         <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ plato.id }}</td>
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ plato.nombre }}</td>
                         <td class="py-3.5 px-6 font-black text-emerald-600">${{ plato.valor|intdot }}</td>
@@ -313,7 +313,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for menu in menus %}
-                    <tr class="hover:bg-slate-50/80 transition">
+                    <tr class="hover:bg-slate-50/80 transition-colors" id="fila-menu-{{ menu.id }}">
                         <td class="py-3.5 px-6 font-mono text-xs text-slate-400">#{{ menu.id }}</td>
                         <td class="py-3.5 px-6 font-bold text-slate-900">{{ menu.nombre }}</td>
                         <td class="py-3.5 px-6 font-black text-emerald-600">${{ menu.precio_menus|intdot }}</td>
@@ -346,7 +346,7 @@
 
 {% if modulos.inventario %}
 <!-- ==================== MODAL GESTOR DE ESCANDALLO / RECETA ==================== -->
-<div id="modal-receta" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-receta" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
         <!-- Cabecera Modal -->
         <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -440,7 +440,7 @@
 
 {% if modulos.delivery %}
 <!-- ==================== MODAL PRECIOS DELIVERY & SKUS (PRICE TIERS) ==================== -->
-<div id="modal-price-tiers" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-price-tiers" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
         <!-- Cabecera Modal -->
         <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
@@ -507,7 +507,7 @@
 {% endif %}
 
 <!-- ==================== MODAL CREAR / EDITAR PLATO ==================== -->
-<div id="modal-plato" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-plato" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
         <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
             <h3 class="font-extrabold text-base" id="modal-titulo-plato">Crear Plato</h3>
@@ -555,7 +555,7 @@
 </div>
 
 <!-- ==================== MODAL CREAR MENÚ COMBO ==================== -->
-<div id="modal-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 border border-slate-100 overflow-hidden">
         <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
             <h3 class="font-extrabold text-base">Crear Menú Combo</h3>
@@ -611,7 +611,7 @@
 </div>
 
 <!-- ==================== MODAL DETALLES DEL MENÚ ==================== -->
-<div id="modal-detalles-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-detalles-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 border border-slate-100 p-6 space-y-4">
         <div class="flex items-center justify-between">
             <h3 class="font-extrabold text-base text-slate-900" id="modal-detalles-titulo">Detalles del Menú</h3>
@@ -624,7 +624,7 @@
 </div>
 
 <!-- ==================== MODAL CONFIRMAR ELIMINACIÓN ==================== -->
-<div id="modal-eliminar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-eliminar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 border border-slate-100 p-6 space-y-4">
         <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
             <i data-lucide="alert-triangle" class="w-6 h-6"></i>
@@ -646,7 +646,7 @@
 
 {% if modulos.salones_mesas %}
 <!-- ==================== MODAL GESTOR DE SALÓN ==================== -->
-<div id="modal-salon" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-salon" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
         <div class="px-6 py-4 bg-indigo-600 text-white flex items-center justify-between">
             <h3 class="text-base font-extrabold" id="modal-salon-titulo">Nuevo Salón</h3>
@@ -674,7 +674,7 @@
 </div>
 
 <!-- ==================== MODAL GESTOR DE MESA ==================== -->
-<div id="modal-mesa" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-mesa" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 border border-slate-100 overflow-hidden">
         <div class="px-6 py-4 bg-amber-500 text-slate-950 flex items-center justify-between">
             <h3 class="text-base font-extrabold" id="modal-mesa-titulo">Nueva Mesa</h3>
@@ -772,7 +772,11 @@ document.addEventListener("DOMContentLoaded", () => {
             })
             .then(res => res.json())
             .then(data => {
-                if (data.success) { window.location.reload(); }
+                if (data.success) {
+                    const chip = document.getElementById(`chip-categoria-${btn.dataset.id}`);
+                    if (chip) chip.remove();
+                    if (window.showToast) window.showToast(data.message || 'Categoría eliminada.', 'success');
+                }
                 else { alert("Error: " + data.message); }
             });
         });
@@ -1186,7 +1190,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
                     body: JSON.stringify({ id: btn.dataset.id })
-                }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); });
+                }).then(r => r.json()).then(d => {
+                    if (!d.success) {
+                        if (window.showToast) window.showToast(d.message || 'Error al eliminar el plato.', 'error');
+                        return;
+                    }
+                    const fila = document.getElementById(`fila-plato-${btn.dataset.id}`);
+                    if (fila) fila.remove();
+                    modalEliminar.classList.add("hidden");
+                    if (window.showToast) window.showToast(d.message || 'Plato eliminado.', 'success');
+                });
             };
             modalEliminar.classList.remove("hidden");
         });
@@ -1200,7 +1213,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     method: "POST",
                     headers: { "Content-Type": "application/json", "X-CSRFToken": csrftoken },
                     body: JSON.stringify({ id: btn.dataset.id })
-                }).then(r => r.json()).then(d => { if (d.success) window.location.reload(); });
+                }).then(r => r.json()).then(d => {
+                    if (!d.success) {
+                        if (window.showToast) window.showToast(d.message || 'Error al eliminar el menú.', 'error');
+                        return;
+                    }
+                    const fila = document.getElementById(`fila-menu-${btn.dataset.id}`);
+                    if (fila) fila.remove();
+                    modalEliminar.classList.add("hidden");
+                    if (window.showToast) window.showToast(d.message || 'Menú eliminado.', 'success');
+                });
             };
             modalEliminar.classList.remove("hidden");
         });
@@ -1243,6 +1265,30 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const recargar = () => window.location.reload();
+
+    // Actualizaciones in-place (evitan recargar la página completa).
+    const refrescarIconos = (root) => {
+        if (window.lucide && root) lucide.createIcons({ root });
+    };
+
+    const pintarBadgeEstado = (badge, activo, textoActivo, textoInactivo, claseIcono) => {
+        if (!badge) return;
+        badge.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200', 'bg-rose-50', 'text-rose-700', 'border-rose-200');
+        if (activo) badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+        else badge.classList.add('bg-rose-50', 'text-rose-700', 'border-rose-200');
+        badge.innerHTML = `<i data-lucide="${activo ? 'check-circle-2' : 'ban'}" class="${claseIcono}"></i> ${activo ? textoActivo : textoInactivo}`;
+        refrescarIconos(badge);
+    };
+
+    const pintarBotonEstado = (btn, activo, opciones) => {
+        const { clasesOn, clasesOff, iconoOn, iconoOff, textoOn, textoOff, claseIcono, conTexto } = opciones;
+        btn.dataset.activo = activo ? '1' : '0';
+        btn.classList.remove(...clasesOn, ...clasesOff);
+        btn.classList.add(...(activo ? clasesOn : clasesOff));
+        const span = conTexto ? `<span>${activo ? textoOn : textoOff}</span>` : '';
+        btn.innerHTML = `<i data-lucide="${activo ? iconoOn : iconoOff}" class="${claseIcono}"></i>${span}`;
+        refrescarIconos(btn);
+    };
 
     // --------------------------- Salones ---------------------------
     const modalSalon = document.getElementById('modal-salon');
@@ -1301,8 +1347,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 const data = await resp.json();
                 if (resp.ok && data.success) {
+                    const activo = data.salon ? data.salon.activo : btn.dataset.activo !== '1';
+                    pintarBotonEstado(btn, activo, {
+                        clasesOn: ['text-rose-500', 'hover:text-rose-600', 'hover:bg-rose-50'],
+                        clasesOff: ['text-emerald-500', 'hover:text-emerald-600', 'hover:bg-emerald-50'],
+                        iconoOn: 'lock', iconoOff: 'unlock', claseIcono: 'w-4 h-4', conTexto: false,
+                    });
+                    btn.title = activo ? 'Desactivar' : 'Activar';
+                    const card = btn.closest('[data-salon-card]');
+                    pintarBadgeEstado(card ? card.querySelector('[data-estado-badge]') : null, activo, 'Activo', 'Inactivo', 'w-3 h-3');
                     if (window.showToast) window.showToast(data.message, 'success');
-                    recargar();
                 } else {
                     if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
                     else alert(data.error || 'Error al cambiar el estado.');
@@ -1376,8 +1430,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
                 const data = await resp.json();
                 if (resp.ok && data.success) {
+                    const activo = data.mesa ? data.mesa.activo : btn.dataset.activo !== '1';
+                    pintarBotonEstado(btn, activo, {
+                        clasesOn: ['bg-rose-50', 'hover:bg-rose-100', 'text-rose-600'],
+                        clasesOff: ['bg-emerald-50', 'hover:bg-emerald-100', 'text-emerald-700'],
+                        iconoOn: 'lock', iconoOff: 'unlock', claseIcono: 'w-3.5 h-3.5', conTexto: true,
+                        textoOn: 'Desactivar', textoOff: 'Activar',
+                    });
+                    const fila = btn.closest('tr');
+                    pintarBadgeEstado(fila ? fila.querySelector('[data-estado-badge]') : null, activo, 'Activa', 'Inactiva', 'w-3.5 h-3.5');
                     if (window.showToast) window.showToast(data.message, 'success');
-                    recargar();
                 } else {
                     if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
                     else alert(data.error || 'Error al cambiar el estado.');

@@ -179,7 +179,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for insumo in insumos %}
-                    <tr class="hover:bg-amber-50/40 transition-colors {% if insumo.stock_actual <= 0 %}bg-rose-50/30{% elif insumo.stock_actual < insumo.stock_minimo %}bg-amber-50/20{% endif %}">
+                    <tr class="hover:bg-amber-50/40 transition-colors cv-auto-row {% if insumo.stock_actual <= 0 %}bg-rose-50/30{% elif insumo.stock_actual < insumo.stock_minimo %}bg-amber-50/20{% endif %}">
                         <!-- Código -->
                         <td class="py-3.5 pl-5 pr-3 font-mono text-xs font-bold text-slate-600">
                             <span class="px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
@@ -339,7 +339,7 @@
 <!-- 6. MODAL DE AJUSTE MANUAL DE STOCK (F18)                                -->
 <!-- ======================================================================= -->
 <div id="modal-ajuste-stock" 
-     class="fixed inset-0 z-50 overflow-y-auto hidden bg-slate-900/60 backdrop-blur-sm transition-opacity duration-200" 
+     class="fixed inset-0 z-50 overflow-y-auto hidden bg-slate-950/75 transition-opacity duration-200" 
      aria-labelledby="modal-title" 
      role="dialog" 
      aria-modal="true">
@@ -463,7 +463,7 @@
 </div>
 
 <!-- ==================== MODAL NUEVO INSUMO ==================== -->
-<div id="modal-insumo" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden">
+<div id="modal-insumo" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden">
     <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full border border-slate-100">
         <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
             <div class="flex items-center gap-2.5">

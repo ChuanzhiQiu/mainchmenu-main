@@ -38,7 +38,7 @@
 <!-- MODAL DE BLOQUEO DE PANTALLA Y DESBLOQUEO POR PIN                       -->
 <!-- ======================================================================= -->
 <div id="pantalla-bloqueo-overlay"
-     class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 transition-opacity duration-300"
+     class="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4 transition-opacity duration-300"
      style="display: none;">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
         
@@ -109,7 +109,7 @@
 <!-- ======================================================================= -->
 <!-- MODAL DE APERTURA DE TURNO DE CAJA                                      -->
 <!-- ======================================================================= -->
-<div id="modal-apertura-turno" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+<div id="modal-apertura-turno" class="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4" style="display:none;">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
         <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-bold">
@@ -142,7 +142,7 @@
 <!-- ======================================================================= -->
 <!-- MODAL DE CIERRE Y ARQUEO DE CAJA                                        -->
 <!-- ======================================================================= -->
-<div id="modal-cierre-turno" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+<div id="modal-cierre-turno" class="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4" style="display:none;">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
         <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
@@ -187,16 +187,20 @@ let lockoutInterval = null;
 let idleTimer = null;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos de inactividad -> auto-bloqueo
 
-// Iniciar detector de inactividad
+// Iniciar detector de inactividad (throttle: no recrear el timeout en cada evento)
+let lastIdleReset = 0;
 function resetIdleTimer() {
+    const now = Date.now();
+    if (now - lastIdleReset < 2000) return;
+    lastIdleReset = now;
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
         bloquearTerminalManual();
     }, IDLE_TIMEOUT_MS);
 }
 
-['mousedown', 'mousemove', 'keydown', 'touchstart'].forEach(event => {
-    document.addEventListener(event, resetIdleTimer, false);
+['pointerdown', 'keydown', 'touchstart'].forEach(event => {
+    document.addEventListener(event, resetIdleTimer, { passive: true });
 });
 
 // Numpad handlers

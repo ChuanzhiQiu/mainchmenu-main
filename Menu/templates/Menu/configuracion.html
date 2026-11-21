@@ -602,7 +602,8 @@
         const btnTest = document.getElementById("btn-test-local-agent");
         if (btnTest) btnTest.addEventListener("click", probarTicketPuenteLocal);
 
-        const health = window.MainchDirectPrint ? await window.MainchDirectPrint.checkLocalAgent() : null;
+        // Un solo sondeo /health con timeout corto: solo si responde se consultan las impresoras.
+        const health = window.MainchDirectPrint ? await window.MainchDirectPrint.checkLocalAgent(800) : null;
         actualizarBadgePuenteLocal(
             !!health,
             health ? `Agente v${health.version} · ${health.platform} · predeterminada: ${health.default_printer || "(ninguna)"}` : "Ejecuta instalar_windows.bat en este PC."

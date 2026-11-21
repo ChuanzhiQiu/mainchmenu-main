@@ -54,19 +54,19 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for cajero in cajeros %}
-                    <tr class="hover:bg-slate-50/80 transition" id="fila-cajero-{{ cajero.id }}">
+                    <tr class="hover:bg-slate-50/80 transition-colors" id="fila-cajero-{{ cajero.id }}">
                         <td class="py-3.5 px-4 font-mono text-xs text-slate-400">#{{ cajero.id }}</td>
                         <td class="py-3.5 px-4 font-bold text-slate-900">{{ cajero.nombre }}</td>
                         <td class="py-3.5 px-4 font-mono text-xs text-slate-600">{{ cajero.codigo_empleado|default:"—" }}</td>
                         <td class="py-3.5 px-4 text-slate-400 text-xs">•••• (hash seguro)</td>
                         <td class="py-3.5 px-4">
                             {% if cajero.activo %}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span data-estado-badge class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
                                 Activo
                             </span>
                             {% else %}
-                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <span data-estado-badge class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                 <i data-lucide="ban" class="w-3.5 h-3.5"></i>
                                 Bloqueado
                             </span>
@@ -158,7 +158,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for turno in turnos %}
-                    <tr class="hover:bg-indigo-50/30 transition">
+                    <tr class="hover:bg-indigo-50/30 transition-colors">
                         <td class="py-3.5 px-4">
                             <div class="font-bold text-slate-900">{{ turno.cajero.nombre }}</div>
                             <div class="font-mono text-[11px] text-slate-500">{{ turno.cajero.codigo_empleado|default:"—" }}</div>
@@ -225,7 +225,7 @@
 </div>
 
 <!-- Modal de Creación de Cajero -->
-<div id="modal-crear-cajero" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+<div id="modal-crear-cajero" class="fixed inset-0 z-50 bg-slate-950/75 flex items-center justify-center p-4" style="display:none;">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 border border-slate-200">
         <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div class="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center">
@@ -357,8 +357,26 @@ async function toggleCajero(id, nombre) {
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
+            const btn = document.querySelector(`.btn-toggle-cajero[data-id="${id}"]`);
+            const activo = data.cajero ? data.cajero.activo : true;
+            if (btn) {
+                btn.dataset.activo = activo ? '1' : '0';
+                btn.classList.remove('bg-rose-50', 'hover:bg-rose-100', 'text-rose-600', 'bg-emerald-50', 'hover:bg-emerald-100', 'text-emerald-700');
+                if (activo) btn.classList.add('bg-rose-50', 'hover:bg-rose-100', 'text-rose-600');
+                else btn.classList.add('bg-emerald-50', 'hover:bg-emerald-100', 'text-emerald-700');
+                btn.innerHTML = `<i data-lucide="${activo ? 'lock' : 'unlock'}" class="w-3.5 h-3.5"></i><span>${activo ? 'Bloquear' : 'Reactivar'}</span>`;
+                if (window.lucide) lucide.createIcons({ root: btn });
+            }
+            const fila = document.getElementById(`fila-cajero-${id}`);
+            const badge = fila ? fila.querySelector('[data-estado-badge]') : null;
+            if (badge) {
+                badge.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200', 'bg-rose-50', 'text-rose-700', 'border-rose-200');
+                if (activo) badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                else badge.classList.add('bg-rose-50', 'text-rose-700', 'border-rose-200');
+                badge.innerHTML = `<i data-lucide="${activo ? 'check-circle-2' : 'ban'}" class="w-3.5 h-3.5"></i> ${activo ? 'Activo' : 'Bloqueado'}`;
+                if (window.lucide) lucide.createIcons({ root: badge });
+            }
             if (window.showToast) window.showToast(data.message, 'success');
-            window.location.reload();
         } else {
             if (window.showToast) window.showToast(data.error || 'Error al cambiar el estado.', 'error');
             else alert(data.error || 'Error al cambiar el estado.');

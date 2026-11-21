@@ -334,7 +334,7 @@
 <!-- ================================================================= -->
 <!-- MODAL DE COBRO DE ORDEN (conectado al endpoint registrar-pago)    -->
 <!-- ================================================================= -->
-<div id="modal-cobro" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4" style="display:none;">
+<div id="modal-cobro" class="fixed inset-0 z-50 bg-slate-950/80 flex items-center justify-center p-4" style="display:none;">
     <div class="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 space-y-4 border border-slate-200">
         <div class="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center">
@@ -515,13 +515,19 @@
             }
         }
 
+        let turnoCheckInFlight = false;
+
         async function verificarTurno() {
             if (ES_ADMIN) {
                 setTurnoBloqueado(false);
                 return;
             }
+            if (document.hidden || turnoCheckInFlight) return;
+            turnoCheckInFlight = true;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
             try {
-                const resp = await fetch(`${API_BASE}cajero/estado/`);
+                const resp = await fetch(`${API_BASE}cajero/estado/`, { signal: controller.signal });
                 if (!resp.ok) {
                     setTurnoBloqueado(true);
                     return;
@@ -530,15 +536,23 @@
                 const abierto = !!(data.turno && data.turno.estado === "ABIERTO");
                 setTurnoBloqueado(!abierto);
             } catch (e) {
-                console.error("Error verificando turno:", e);
+                if (e.name !== "AbortError") {
+                    console.error("Error verificando turno:", e);
+                }
                 setTurnoBloqueado(true);
+            } finally {
+                clearTimeout(timeoutId);
+                turnoCheckInFlight = false;
             }
         }
 
         if (MODULO_CAJEROS) {
             setTurnoBloqueado(!ES_ADMIN && !TURNO_ABIERTO_INICIAL);
             verificarTurno();
-            setInterval(verificarTurno, 5000);
+            setInterval(verificarTurno, 15000);
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) verificarTurno();
+            });
         } else {
             setTurnoBloqueado(false);
         }
@@ -706,7 +720,7 @@
                 btnRem.type = "button";
                 btnRem.className = "btn-cart-remove text-rose-500 hover:text-rose-700 p-0.5 ml-1";
                 btnRem.dataset.key = key;
-                btnRem.innerHTML = '<i data-lucide="x" class="w-3.5 h-3.5"></i>';
+                btnRem.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
 
                 controlsDiv.appendChild(priceSpan);
                 controlsDiv.appendChild(btnDec);
@@ -718,8 +732,6 @@
                 li.appendChild(controlsDiv);
                 listaPlatos.appendChild(li);
             });
-
-            if (window.lucide) lucide.createIcons({ root: listaPlatos });
         }
 
         // 9. Cálculo dinámico en tiempo real (F14)
@@ -915,7 +927,7 @@
         const select = document.getElementById('cobro-orden-select');
         select.innerHTML = '<option value="">Cargando órdenes...</option>';
         try {
-            const resp = await fetch(API_BASE + 'ordenes/');
+            const resp = await fetch(API_BASE + 'ordenes/?estado=En%20curso&limit=100');
             if (!resp.ok) {
                 select.innerHTML = '<option value="">No se pudieron cargar las órdenes.</option>';
                 return;

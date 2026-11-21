@@ -11,7 +11,7 @@
             <div class="flex items-center gap-3">
                 <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Cocina en Vivo (KDS)</h1>
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                    <span class="w-2 h-2 mr-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <span class="w-2 h-2 mr-1.5 bg-emerald-500 rounded-full"></span>
                     Polling 5s
                 </span>
             </div>
@@ -30,7 +30,7 @@
     <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
 
     <!-- KDS Board Container (HTMX Reactive Polling Target) -->
-    <!-- hx-trigger="every 5s, orderUpdated from:body" hx-target="#kds-board" hx-swap="outerHTML" -->
+    <!-- hx-trigger="every 5s [document.visibilityState === 'visible'], orderUpdated from:body" hx-target="#kds-board" hx-swap="outerHTML" -->
     <section class="mb-12">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -121,7 +121,7 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100 font-medium text-slate-700">
                         {% for pedido in historial_reciente %}
-                            <tr class="hover:bg-slate-50 transition">
+                            <tr class="hover:bg-slate-50 transition-colors cv-auto-row">
                                 <td class="px-4 py-3 font-bold text-slate-900">#{{ pedido.id }}</td>
                                 <td class="px-4 py-3">{{ pedido.cliente }}</td>
                                 <td class="px-4 py-3 text-xs text-slate-500">{{ pedido.fecha }} {{ pedido.hora|date:"H:i" }}</td>
@@ -155,7 +155,7 @@
 </div>
 
 <!-- Modal de Confirmación / Completar (Placed outside #kds-board to survive polling swaps) -->
-<div id="modal-confirmar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm hidden" role="dialog" aria-modal="true">
+<div id="modal-confirmar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden" role="dialog" aria-modal="true">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden border border-slate-100 transform transition-all p-6">
         <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
             <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
@@ -212,7 +212,7 @@
 </div>
 
 <!-- Modal de Eliminación (Placed outside #kds-board to survive polling swaps) -->
-<div id="modal-eliminar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm hidden" role="dialog" aria-modal="true">
+<div id="modal-eliminar" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 hidden" role="dialog" aria-modal="true">
     <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden border border-slate-100 p-6">
         <div class="text-center">
             <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
@@ -234,6 +234,13 @@
 
 <!-- Reactive Scripting & Non-Destructive Event Orchestration (Zero location.reload) -->
 <script>
+    // Wake-up inmediato al volver de la pestaña (Opera Tab Snoozing / background throttling).
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && window.htmx) {
+            htmx.trigger(document.body, "orderUpdated");
+        }
+    });
+
     document.addEventListener("DOMContentLoaded", () => {
         let activeOrderId = null;
 

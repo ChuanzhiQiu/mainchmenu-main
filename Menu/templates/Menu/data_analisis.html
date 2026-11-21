@@ -54,7 +54,7 @@
                 <h3 class="text-3xl font-black tracking-tight mt-1 text-slate-950">${{ ticket_promedio|intdot }}</h3>
                 <p class="text-xs font-semibold text-amber-950/90 mt-1">Gasto medio por cliente</p>
             </div>
-            <div class="w-12 h-12 bg-white/30 backdrop-blur-sm rounded-xl flex items-center justify-center">
+            <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                 <i data-lucide="receipt" class="w-6 h-6 text-slate-950"></i>
             </div>
         </div>
@@ -285,7 +285,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 text-sm">
                     {% for item in ventas_por_item %}
-                    <tr class="fila-item-venta hover:bg-indigo-50/30 transition" data-nombre="{{ item.nombre|lower }}" data-categoria="{{ item.categoria|lower }}">
+                    <tr class="fila-item-venta hover:bg-indigo-50/30 transition-colors cv-auto-row" data-nombre="{{ item.nombre|lower }}" data-categoria="{{ item.categoria|lower }}">
                         <td class="py-3 px-6 font-bold text-slate-900">{{ item.nombre }}</td>
                         <td class="py-3 px-6 text-slate-600">{{ item.categoria }}</td>
                         <td class="py-3 px-6 text-center font-mono text-xs text-slate-700">{{ item.unidades_vendidas }}</td>
@@ -323,9 +323,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const deliveryTiempoLabels = {{ delivery_tiempo_labels|safe }};
     const deliveryTiempoData = {{ delivery_tiempo_data|safe }};
 
+    // Chart.js sin animaciones y a 1x: menos trabajo de GPU/CPU en analítica densa.
+    Chart.defaults.animation = false;
+    Chart.defaults.devicePixelRatio = 1;
+
     // 0. Gráfico Evolución Delivery (Line)
-    const ctxDelivery = document.getElementById('chartDeliveryTiempo');
-    if (ctxDelivery && deliveryTiempoLabels.length > 0) {
+    const initDelivery = () => {
+        const ctxDelivery = document.getElementById('chartDeliveryTiempo');
+        if (!ctxDelivery || deliveryTiempoLabels.length === 0) return;
         new Chart(ctxDelivery, {
             type: 'line',
             data: {
@@ -355,11 +360,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
-    }
+    };
 
     // 1. Gráfico Ingresos Diarios Totales
-    const ctxIngresos = document.getElementById('chartIngresos');
-    if (ctxIngresos && ingresosLabels.length > 0) {
+    const initIngresos = () => {
+        const ctxIngresos = document.getElementById('chartIngresos');
+        if (!ctxIngresos || ingresosLabels.length === 0) return;
         new Chart(ctxIngresos, {
             type: 'line',
             data: {
@@ -387,11 +393,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
-    }
+    };
 
     // 2. Gráfico Horas Punta (Bar)
-    const ctxHoras = document.getElementById('chartHoras');
-    if (ctxHoras) {
+    const initHoras = () => {
+        const ctxHoras = document.getElementById('chartHoras');
+        if (!ctxHoras) return;
         new Chart(ctxHoras, {
             type: 'bar',
             data: {
@@ -410,11 +417,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
         });
-    }
+    };
 
     // 3. Gráfico Top Platos (Bar horizontal)
-    const ctxPlatos = document.getElementById('chartPlatos');
-    if (ctxPlatos) {
+    const initPlatos = () => {
+        const ctxPlatos = document.getElementById('chartPlatos');
+        if (!ctxPlatos) return;
         new Chart(ctxPlatos, {
             type: 'bar',
             data: {
@@ -434,11 +442,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
             }
         });
-    }
+    };
 
     // 4. Gráfico Métodos de Pago (Doughnut)
-    const ctxPagos = document.getElementById('chartPagos');
-    if (ctxPagos) {
+    const initPagos = () => {
+        const ctxPagos = document.getElementById('chartPagos');
+        if (!ctxPagos) return;
         new Chart(ctxPagos, {
             type: 'doughnut',
             data: {
@@ -454,11 +463,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 plugins: { legend: { position: 'bottom' } }
             }
         });
-    }
+    };
 
     // 5. Gráfico Canales de Venta (Doughnut)
-    const ctxCanales = document.getElementById('chartCanales');
-    if (ctxCanales) {
+    const initCanales = () => {
+        const ctxCanales = document.getElementById('chartCanales');
+        if (!ctxCanales) return;
         new Chart(ctxCanales, {
             type: 'doughnut',
             data: {
@@ -474,7 +484,40 @@ document.addEventListener("DOMContentLoaded", () => {
                 plugins: { legend: { position: 'bottom' } }
             }
         });
+    };
+
+    // Inicialización diferida: solo se construye el chart cuando su canvas se acerca al viewport.
+    const lazyCharts = [
+        ['chartDeliveryTiempo', initDelivery],
+        ['chartIngresos', initIngresos],
+        ['chartHoras', initHoras],
+        ['chartPlatos', initPlatos],
+        ['chartPagos', initPagos],
+        ['chartCanales', initCanales],
+    ];
+
+    if (typeof IntersectionObserver !== 'function') {
+        lazyCharts.forEach(([, init]) => init());
+        return;
     }
+
+    const pending = new Map();
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const init = pending.get(entry.target);
+            pending.delete(entry.target);
+            observer.unobserve(entry.target);
+            if (init) init();
+        });
+    }, { rootMargin: '200px' });
+
+    lazyCharts.forEach(([id, init]) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        pending.set(canvas, init);
+        observer.observe(canvas);
+    });
 
     if (window.lucide) {
         lucide.createIcons();
