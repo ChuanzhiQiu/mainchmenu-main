@@ -3236,7 +3236,16 @@ def api_ticket_datos_impresion(request, orden_id, slug=None):
         })
 
     from django.utils import timezone
-    fecha = orden.fecha_hora.strftime("%d/%m/%Y %H:%M") if orden.fecha_hora else timezone.now().strftime("%d/%m/%Y %H:%M")
+    if orden.fecha and orden.hora:
+        fecha = f"{orden.fecha.strftime('%d/%m/%Y')} {orden.hora.strftime('%H:%M')}"
+    elif orden.fecha:
+        fecha = orden.fecha.strftime("%d/%m/%Y")
+    else:
+        fecha = timezone.localtime().strftime("%d/%m/%Y %H:%M")
+
+    mesa_label = None
+    if orden.mesa:
+        mesa_label = getattr(orden.mesa, "codigo", None) or getattr(orden.mesa, "numero", None) or str(orden.mesa)
 
     return JsonResponse({
         "success": True,
@@ -3244,10 +3253,10 @@ def api_ticket_datos_impresion(request, orden_id, slug=None):
             "id": orden.id,
             "cliente": orden.cliente or "Consumidor Final",
             "fecha": fecha,
-            "canal": orden.get_canal_display(),
+            "canal": orden.get_canal_venta_display() if hasattr(orden, "get_canal_venta_display") else (getattr(orden, "canal_venta", None) or "Local"),
             "tipo_servicio": orden.tipo_servicio,
-            "mesa": orden.mesa.numero if orden.mesa else None,
-            "tipo_pago": orden.get_tipo_pago_display() if orden.tipo_pago else "Por definir",
+            "mesa": mesa_label,
+            "tipo_pago": orden.get_tipo_pago_display() if hasattr(orden, "get_tipo_pago_display") and orden.tipo_pago else (orden.tipo_pago or "Por definir"),
             "items": items,
             "descuento": float(orden.descuento or 0),
             "total": float(orden.monto_total or 0),
