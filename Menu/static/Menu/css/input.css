@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Rendimiento de listas largas: el navegador evita pintar filas fuera de pantalla. */
+.cv-auto-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 3.5rem;
+}
+
+.cv-auto-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 28rem;
+}
+
+@supports not (content-visibility: auto) {
+  .cv-auto-row,
+  .cv-auto-section {
+    contain: layout style paint;
+  }
+}

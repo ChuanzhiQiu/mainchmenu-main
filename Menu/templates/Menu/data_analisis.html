@@ -1,5 +1,5 @@
 {% extends 'Menu/base.html' %}
-{% load formato %}
+{% load static formato %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -303,8 +303,8 @@
     </div>
 </div>
 
-<!-- Chart.js CDN -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Chart.js (self-hosted, pinned) -->
+<script defer src="{% static 'Menu/vendor/chart-4.4.7.umd.min.js' %}"></script>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
